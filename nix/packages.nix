@@ -3,20 +3,21 @@
 let
   inherit (pkgs) lib;
 
-  # v0.19.0 is an annotated tag; the peeled commit is pinned rather than the
-  # mutable tag. This is the same release as the Dockerfile's mentat images.
+  # The release in the Dockerfile's mentat images. Its tag is annotated, so the commit it
+  # points at is pinned, not the tag, which can move.
+  mentatVersion = "0.20.0";
   mentatSource = pkgs.fetchFromGitHub {
-    owner = "mmastrac";
+    owner = "kindlingai";
     repo = "mentat";
-    rev = "717e767ff0221d60056726eff3c94b2968d7c6af";
-    hash = "sha256-Gi/0ZmH+XU2ZYm/fosup4UD7Nsp7a0aKd2ij4PlJTUM=";
+    rev = "7c37c51c3b17244d4d39f474ad348978d86e9cbc";
+    hash = "sha256-YjgZcx5UQYg8LXHkaRyTQIccuKQMNByDTYnfSC3fKVM=";
   };
 
   # The upstream package is a small Ray-compatible shim named "mentatd", not
   # real Ray. In particular spark-agent uses ray.register.connect().
   rayShim = pkgs.python3Packages.buildPythonPackage {
     pname = "mentatd";
-    version = "0.19.0";
+    version = mentatVersion;
     src = "${mentatSource}/python";
     pyproject = true;
     build-system = [ pkgs.python3Packages.setuptools ];
@@ -53,7 +54,7 @@ in
 {
   mentatd = pkgs.rustPlatform.buildRustPackage {
     pname = "mentatd";
-    version = "0.19.0";
+    version = mentatVersion;
     src = mentatSource;
     cargoRoot = "rust";
     # Copied verbatim from the pinned commit; the Rust builder checks it
@@ -72,8 +73,8 @@ in
       ln -s mentatd "$out/bin/ray"
     '';
     meta = {
-      description = "Mentat 0.19.0 cluster daemon and host machine probe";
-      homepage = "https://github.com/mmastrac/mentat";
+      description = "Mentat ${mentatVersion} cluster daemon and host machine probe";
+      homepage = "https://github.com/kindlingai/mentat";
       license = with lib.licenses; [ mit asl20 ];
       mainProgram = "mentatd";
     };
