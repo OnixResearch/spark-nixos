@@ -22,9 +22,7 @@ stdenv.mkDerivation {
     runHook preInstall
     install -Dm755 librmlist.so "$out/lib/dispram/librmlist.so"
     install -Dm644 dispramd.py "$out/libexec/dispram/dispramd.py"
-    mkdir -p "$out/share/dispram/python" "$out/share/licenses/dispram"
-    cp -r python/. "$out/share/dispram/python/"
-    install -m644 LICENSE LICENSE-GPL BUNDLING-EXCEPTION "$out/share/licenses/dispram/"
+    install -Dm644 LICENSE "$out/share/licenses/dispram/LICENSE"
     runHook postInstall
   '';
 

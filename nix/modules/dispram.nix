@@ -11,6 +11,16 @@ let
   package = pkgs.callPackage ../pkgs/dispram.nix {
     inherit (cfg) ogkmSource;
   };
+  # The parts of dispram/ that run inside model containers, with their license.
+  plugin = lib.fileset.toSource {
+    root = ../../dispram;
+    fileset = lib.fileset.unions [
+      ../../dispram/python
+      ../../dispram/vllm
+      ../../dispram/LICENSE-GPL
+      ../../dispram/BUNDLING-EXCEPTION
+    ];
+  };
 in
 {
   options.services.kindling.dispram = {
@@ -69,6 +79,15 @@ in
         assertion = cfg.ogkmVersion != "" && cfg.ogkmVersion == cfg.validatedDriver;
         message = "services.kindling.dispram.ogkmVersion must declare the same release as validatedDriver.";
       }
+    ];
+
+    # Recipes mount the plugin and the socket directory at the Ubuntu image's paths (see
+    # dispram/README.md). Both exist whenever Kindling runs, dispramd or not, because Podman
+    # refuses to start a container whose bind source is missing. Without dispramd the plugin
+    # stands aside.
+    systemd.tmpfiles.rules = mkIf config.services.kindling.enable [
+      "d /run/dispram 0755 root root -"
+      "L+ /opt/kindling/dispram - - - - ${plugin}"
     ];
 
     systemd.services.dispramd = mkIf (cfg.enable && configured) {
