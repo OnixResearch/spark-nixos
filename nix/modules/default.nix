@@ -3,15 +3,16 @@
 let
   cfg = config.services.kindling;
   packages = import ../packages.nix { inherit pkgs; };
-  source = ../..;
-  mtuScript = "${pkgs.bash}/bin/sh ${source}/overlay/usr/local/sbin/sparkos-mtu";
-  checkScript = "${pkgs.bash}/bin/bash ${source}/overlay/usr/local/sbin/sparkos-mentatd-check";
+  # Units refer to single overlay files, so only those files are copied to the store. A copy of
+  # the whole checkout would carry .git too, and any edit or fetch would restart the units.
+  mtuScript = "${pkgs.bash}/bin/sh ${../../overlay/usr/local/sbin/sparkos-mtu}";
+  checkScript = "${pkgs.bash}/bin/bash ${../../overlay/usr/local/sbin/sparkos-mentatd-check}";
   memory = "${packages.sparkMemory}/bin/spark-memory";
   routeReady = pkgs.writeShellScript "kindling-mentat-route" ''
     [ -n "''${MENTAT_NODE_IP:-}" ] || ${pkgs.iproute2}/bin/ip -4 route get 8.8.8.8 >/dev/null
   '';
   logo = pkgs.writeShellScriptBin "spark-logo" ''
-    exec ${pkgs.python3}/bin/python3 ${source}/overlay/usr/local/bin/spark-logo "$@"
+    exec ${pkgs.python3}/bin/python3 ${../../overlay/usr/local/bin/spark-logo} "$@"
   '';
   # NixOS installs nvidia-smi in the driver's bin output, which /run/opengl-driver leaves out.
   # A unit's PATH has only its path packages and a few defaults, so each unit that runs it lists this.
@@ -68,7 +69,7 @@ in
     # The Ubuntu image's GRUB, DGX bind mounts, uid migration, and trial timer are intentionally
     # not installed: the NixOS host owns its own boot loader, user database, and persistent state.
     environment.etc = {
-      "kindling/version".text = builtins.readFile (source + "/VERSION");
+      "kindling/version".text = builtins.readFile ../../VERSION;
       "spark-os-version".text = "NixOS ${config.system.nixos.version}\n";
     } // lib.optionalAttrs (cfg.connectxMtu != 0) {
       "kindling/connectx-mtu".text = "${toString cfg.connectxMtu}\n";
@@ -146,7 +147,7 @@ in
         Type = "oneshot";
         Nice = 10;
         IOSchedulingClass = "idle";
-        ExecStart = "${pkgs.bash}/bin/sh ${source}/overlay/usr/local/bin/spark-log-snapshot.sh";
+        ExecStart = "${pkgs.bash}/bin/sh ${../../overlay/usr/local/bin/spark-log-snapshot.sh}";
       };
     };
     systemd.timers.spark-dmesg-snapshot = {
@@ -208,10 +209,10 @@ in
       environment = {
         TERM = "linux";
         SPARK_LOGIN = "${pkgs.shadow}/bin/login";
-        SPARK_LOGO_DIR = "${source}/overlay/usr/share/kindling";
+        SPARK_LOGO_DIR = "${../../overlay/usr/share/kindling}";
       };
       serviceConfig = {
-        ExecStart = "${pkgs.bash}/bin/bash ${source}/overlay/usr/local/bin/spark-console";
+        ExecStart = "${pkgs.bash}/bin/bash ${../../overlay/usr/local/bin/spark-console}";
         StandardInput = "tty";
         StandardOutput = "tty";
         TTYPath = "/dev/tty1";
@@ -239,7 +240,7 @@ in
         WATCHDOG_PROBE_CMD = "${pkgs.coreutils}/bin/true";
       };
       serviceConfig = {
-        ExecStart = "${pkgs.python3}/bin/python3 ${source}/overlay/usr/local/bin/spark-watchdog.py";
+        ExecStart = "${pkgs.python3}/bin/python3 ${../../overlay/usr/local/bin/spark-watchdog.py}";
         StateDirectory = "spark-watchdog";
         Restart = "on-failure";
         RestartPreventExitStatus = 3;
