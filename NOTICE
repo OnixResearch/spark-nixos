@@ -27,8 +27,9 @@ nixos-dgx-spark
   (packages/dgx-spark-mlnx-hotplug/default.nix there).
 
   Changed: nix/modules/hardware/default.nix (modules/dgx-spark.nix there),
-  nix/modules/hardware/connectx7.nix (modules/dgx-spark-connectx7.nix) and
-  nix/checks/hardware-eval.nix (checks/dgx-spark-eval.nix).
+  nix/modules/hardware/connectx7.nix (modules/dgx-spark-connectx7.nix),
+  nix/checks/hardware-eval.nix (checks/dgx-spark-eval.nix) and
+  nix/overlays/cuda-fixes.nix (overlays/fixes.nix).
 
 straylight-software/nixos-dgx-spark
   https://github.com/straylight-software/nixos-dgx-spark, MIT. A fork of graham33's. No files

@@ -36,7 +36,7 @@ let
       [ ];
 in
 {
-  imports = [ ./dispram.nix ];
+  imports = [ ./dispram.nix ./models.nix ];
 
   options.services.kindling = {
     enable = lib.mkEnableOption "Kindling Spark host services on an existing NixOS GB10 installation";
@@ -250,6 +250,7 @@ in
       # procps before coreutils: the status screen runs uptime -p, which coreutils' uptime lacks.
       path = with pkgs; [
         procps coreutils iproute2 curl jq gnused gawk gnugrep util-linux ncurses hostname getent logo
+        systemd # machinectl, for models in NixOS containers
       ] ++ containerCli ++ nvidiaBin;
       environment = {
         TERM = "linux";

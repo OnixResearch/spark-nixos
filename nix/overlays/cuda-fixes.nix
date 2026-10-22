@@ -1,0 +1,155 @@
+# CUDA 13.4 fixes for vLLM on the GB10, from graham33/nixos-dgx-spark's overlays/fixes.nix at
+# c646a19 (MIT, see LICENSES/MIT-nixos-dgx-spark.txt). Only the nodejs fix, which vLLM does not
+# need, is left out.
+# Nixpkgs fixes overlay
+# Workarounds for packages that are broken or need adjustments on aarch64-linux / CUDA 13
+final: prev: {
+  # Switch to CUDA 13.4.
+  #
+  # nixpkgs builds cuda-samples from the v13.0 tag for every CUDA 13.x, and
+  # three of that release's samples (segmentationTreeThrust, particles and
+  # smokeParticles) no longer compile against the CCCL 3.x shipped with CUDA
+  # 13.4. Apply NVIDIA's fix, which moves them off thrust::make_tuple and
+  # thrust::tuple onto the cuda::std equivalents. It landed after v13.0 but
+  # applies cleanly to it.
+  #
+  # Moving to a newer sample release is not the easier fix it looks like:
+  # v13.2 added an unconditional file(READ /etc/os-release) to
+  # vulkanImageCUDA, which fails CMake outright in the sandbox, and v13.3
+  # onwards reorganise Samples/ into cpp/ and python/, which nixpkgs' prePatch
+  # and installPhase are written against.
+  cudaPackages = prev.cudaPackages_13_4.overrideScope (
+    _: prevCuda: {
+      cuda-samples = prevCuda.cuda-samples.overrideAttrs (oldAttrs: {
+        patches = (oldAttrs.patches or [ ]) ++ [
+          (final.fetchpatch {
+            name = "cuda-samples-cuda-std-tuple.patch";
+            url = "https://github.com/NVIDIA/cuda-samples/commit/6c4d183ba30202520b66e7b524f47780bb1f3c36.patch";
+            hash = "sha256-kV6efwOXZN/hU1pyE28d/zWu6oolxNbiJbK65QdGVkg=";
+          })
+        ];
+      });
+    }
+  );
+
+  pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+    (python-final: python-prev: {
+      # compressed-tensors imports psutil in its offload code, and upstream's
+      # setup.py lists it in install_requires, but the nixpkgs derivation
+      # doesn't propagate it.
+      compressed-tensors = python-prev.compressed-tensors.overridePythonAttrs (oldAttrs: {
+        dependencies = (oldAttrs.dependencies or [ ]) ++ [ python-final.psutil ];
+      });
+
+      # MAGMA is in torch's closure purely to provide GPU LAPACK, and nixpkgs
+      # adds it unconditionally under cudaSupport -- a ~3500-object CUDA build,
+      # about half an hour on the Spark. On CUDA 13.4 cuSOLVER covers the paths
+      # that matter: torch compiles its MAGMA torch.linalg.eig path only when
+      # CUSOLVER_VERSION < 11702, its MAGMA triangular_solve path is ROCm-only,
+      # and lu_factor's default backend falls through to cuSOLVER/cuBLAS when
+      # MAGMA is absent.
+      #
+      # What this gives up: torch.backends.cuda.preferred_linalg_library("magma")
+      # now raises rather than selecting a backend, and batched non-square
+      # lu_factor loses the MAGMA path that torch's own comment calls the
+      # fastest. Note 14 call sites guard on AT_MAGMA_ENABLED and only the four
+      # above were read, so treat the rest of torch.linalg on GPU as untested
+      # here.
+      #
+      # USE_MAGMA=0 on its own saves no build time, because nixpkgs would still
+      # realise magma as a declared input, so drop it from buildInputs too.
+      torch = python-prev.torch.overrideAttrs (oldAttrs: {
+        env = (oldAttrs.env or { }) // {
+          USE_MAGMA = "0";
+        };
+        buildInputs = prev.lib.filter
+          (
+            drv: drv == null || (drv.pname or drv.name or "") != "magma"
+          )
+          oldAttrs.buildInputs;
+      });
+
+      # torchaudio's suite runs ~2,200 CPU tests, taking anywhere from 3 to 59
+      # minutes on the Spark depending on load, and is flaky:
+      # test_decoder_inference_torchscript_consistency (Tacotron2) failed once
+      # and passed on retry for the same derivation, its decoder stopping after
+      # 1 frame instead of 300. vllm depends on torchaudio, so a flaky failure
+      # here takes vllm and the system closure down with it.
+      torchaudio = python-prev.torchaudio.overridePythonAttrs {
+        doCheck = false;
+      };
+
+      # nixpkgs moved cython to 3.3.0 (NixOS/nixpkgs#554025), but cupy 14.2.0,
+      # cuda-bindings 13.4.3 and cuda-core 1.0.1 cap their build requirement
+      # at <3.3 -- on their main branches too, as of 2026-10-18 -- so the pypa
+      # build aborts with "Unmet dependencies". nixpkgs keeps cython_3_2, so
+      # build them with that rather than relaxing a pin upstream hasn't
+      # lifted. nccl4py, flashinfer and the cutlass-dsl chain up to vllm all
+      # depend on cuda-bindings. Drop these once nixpkgs builds them against
+      # 3.3.
+      cupy = python-prev.cupy.override { cython = python-final.cython_3_2; };
+      cuda-bindings = python-prev.cuda-bindings.override {
+        cython = python-final.cython_3_2;
+      };
+      cuda-core = python-prev.cuda-core.override {
+        cython = python-final.cython_3_2;
+      };
+
+      # Upstream marks vllm broken under CUDA, with no reason given
+      # (NixOS/nixpkgs#553566), and still does after the bump to 0.29.0. With
+      # the fixes below, 0.29.0 builds here with CUDA 13.4, so unbreak it.
+      #
+      # It is also marked bad on aarch64-linux, but the reason given there
+      # ("could not find git for clone of arm_compute-populate") belongs to
+      # the CPU backend, which pulls in oneDNN and Arm Compute Library. A CUDA
+      # build never touches either.
+      #
+      # vllm 0.29.0 also requires PyNvVideoCodec and nvtx, neither packaged in
+      # nixpkgs, so the runtime-deps check fails. Both are imported lazily:
+      # PyNvVideoCodec only for the opt-in "pynvvideocodec" video backend, and
+      # nvtx only under VLLM_NVTX_SCOPES_FOR_PROFILING. Drop them, as nixpkgs
+      # does for vllm's other unpackaged dependencies.
+      #
+      # vllm-flash-attn hard-codes FlashAttention-2's arch list as
+      # "8.0+PTX", so on SM12x it ships only sm_80 cubins and compute_80
+      # PTX, and every FA2 kernel is JIT-compiled by the driver. A driver can
+      # only JIT PTX from a toolkit no newer than itself -- CUDA minor-version
+      # compatibility does not cover PTX JIT -- so with CUDA 13.4 PTX (ISA
+      # 9.4) on a CUDA 13.2 driver, vllm dies at engine init with
+      # cudaErrorUnsupportedPtxVersion. Add 12.0 so the Spark gets sm_120
+      # cubins, which run on its sm_121; other arch lists are unaffected.
+      #
+      # nixpkgs backports Dao-AILab/flash-attention#1719 to fix the Hopper
+      # (FA3) build, but that change wrote `select<0, 1>(TileShape_MNK_PV{})()`
+      # -- calling the tuple -- and every sm90 instantiation fails to compile.
+      # Upstream fixed it five days later in #1723; apply that too. Drop it
+      # once nixpkgs carries both, or its flash-attention pin includes them.
+      vllm = (python-prev.vllm.override {
+        vllm-flash-attn = python-prev.vllm.vllm-flash-attn.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [
+            (final.fetchpatch {
+              name = "hopper-correct-cxx-syntax-in-epilogue-fwd";
+              url = "https://github.com/Dao-AILab/flash-attention/commit/3ba6f826b199ff68aa9e9139a46280160defa5cd.patch";
+              hash = "sha256-NkCEowXSi+tiWu74Qt+VPKKavx0H9JeteovSJKToK9A=";
+            })
+          ];
+          postPatch = (old.postPatch or "") + ''
+            substituteInPlace CMakeLists.txt \
+              --replace-fail \
+                'cuda_archs_loose_intersection(FA2_ARCHS "8.0+PTX"' \
+                'cuda_archs_loose_intersection(FA2_ARCHS "8.0+PTX;12.0"'
+          '';
+        });
+      }).overrideAttrs (old: {
+        pythonRemoveDeps = (old.pythonRemoveDeps or [ ]) ++ [
+          "PyNvVideoCodec"
+          "nvtx"
+        ];
+        meta = old.meta // {
+          broken = false;
+          badPlatforms = prev.lib.filter (p: p != "aarch64-linux") (old.meta.badPlatforms or [ ]);
+        };
+      });
+    })
+  ];
+}

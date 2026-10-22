@@ -1,7 +1,8 @@
 # Two boxes in VMs, joined by a LAN and a fabric, with the README's cluster firewall: the
-# fabric trusted, and openFirewall on the LAN. spark1 also runs a mentat router, the status
-# screen and the watchdog. The VMs have no GPU, no GB10 kernel and no RDMA, so nvidia-smi,
-# dispramd and the ConnectX MTU path are out of reach here.
+# fabric trusted, and openFirewall on the LAN. spark1 also runs a mentat router, the watchdog,
+# and Podman for recipes' OCI images. spark2 runs a model in a NixOS container. Both run the
+# status screen. The VMs have no GPU, no GB10 kernel and no RDMA, so nvidia-smi, dispramd, CUDA
+# and the ConnectX MTU path are out of reach here.
 { pkgs, module }:
 
 let
@@ -22,6 +23,37 @@ let
     ];
   };
 
+  # An engine stand-in: the two OpenAI routes mentat's router uses, its /v1/models probe and a
+  # chat completion, with a canned answer.
+  standIn = pkgs.writeText "stand-in-engine.py" ''
+    import json, sys
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Engine(BaseHTTPRequestHandler):
+        def reply(self, body):
+            data = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            if self.path.rstrip("/") == "/v1/models":
+                self.reply({"object": "list", "data": [{"id": "stand-in", "object": "model"}]})
+            else:
+                self.send_error(404)
+
+        def do_POST(self):
+            request = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
+            message = {"role": "assistant", "content": "hello from a NixOS container"}
+            self.reply({"object": "chat.completion", "model": request["model"],
+                        "choices": [{"index": 0, "message": message, "finish_reason": "stop"}]})
+
+    print("stand-in engine on port", sys.argv[1], flush=True)
+    ThreadingHTTPServer(("0.0.0.0", int(sys.argv[1])), Engine).serve_forever()
+  '';
+
   box = { pkgs, ... }: {
     imports = [ module ];
 
@@ -40,11 +72,8 @@ let
       enable = true;
       openFirewall = true;
       ethernetMtu = 1400;
+      console.enable = true;
     };
-
-    # Podman, as every hardware module runs, but without its docker alias: the services find
-    # Podman's CLI themselves.
-    virtualisation.podman.enable = true;
 
     environment.etc."spark/mentat.key" = { text = "kindling-vm-test-key"; mode = "0400"; };
     # Every VM's QEMU user network (eth0) has 10.0.2.15, as every Podman host's podman0 has
@@ -61,8 +90,10 @@ pkgs.testers.runNixOSTest {
 
   nodes.spark1 = {
     imports = [ box ];
-    services.kindling.console.enable = true;
     services.kindling.watchdog.enable = true;
+    # Podman, for recipes' OCI images, without its docker alias: the services find Podman's CLI
+    # themselves.
+    virtualisation.podman.enable = true;
     boot.kernelModules = [ "i6300esb" ];
     virtualisation.qemu.options = [ "-device i6300esb" ];
     virtualisation.diskSize = 4096;
@@ -96,6 +127,9 @@ pkgs.testers.runNixOSTest {
         SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="52:54:00:12:03:02", NAME="enp9s0"
       '')
     ];
+    # No container runtime: the model runs in a NixOS container, and the router on spark1
+    # reaches its port over the trusted fabric.
+    services.kindling.models.standin.command = [ "${pkgs.python3}/bin/python3" "${standIn}" "8000" ];
   };
 
   testScript = ''
@@ -229,6 +263,25 @@ pkgs.testers.runNixOSTest {
             "-e PYTHONPATH=/opt/dispram plugin-check python3 /check.py"
         )
         assert out.strip() == "['dispram_vllm:register'] False 0", out
+
+    with subtest("a model in a NixOS container joins mentat, and the router serves it"):
+        spark2.wait_for_unit("container@standin.service")
+        spark2.wait_until_succeeds("journalctl -M standin -u engine | grep -q 'stand-in engine on port 8000'")
+        # The router lists whatever the engine lists, once its probe of the endpoint admits it.
+        spark1.wait_until_succeeds("curl -sf http://127.0.0.1:6381/v1/models | grep -q stand-in")
+        body = json.dumps({"model": "stand-in", "messages": [{"role": "user", "content": "hi"}]})
+        out = spark1.succeed(
+            f"curl -sf -X POST -H 'content-type: application/json' -d '{body}' "
+            "http://127.0.0.1:6381/v1/chat/completions"
+        )
+        assert "hello from a NixOS container" in out, out
+        # spark2 has no docker: the agent's logs and the status screen show the model all the same.
+        spark2.succeed("systemctl start spark-dmesg-snapshot")
+        spark2.succeed("grep -q '^standin ' /var/log/spark/machines.log")
+        spark2.succeed("grep -q 'stand-in engine' /var/log/spark/model-standin.log")
+        spark2.wait_until_succeeds("tr -cd '[:print:]' < /dev/vcs1 | grep -Eq 'standin +running'")
+        screen = spark2.succeed("tr -cd '[:print:]' < /dev/vcs1")
+        assert "not found" not in screen and "docker not answering" not in screen, screen
 
     with subtest("a switch leaves mentatd and the status screen running"):
         units = ("mentatd", "spark-console")

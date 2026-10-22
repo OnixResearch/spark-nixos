@@ -10,7 +10,7 @@ NixOS for NVIDIA GB10 hosts (DGX Spark, ASUS Ascent GX10) running Kindling's clu
 `nixosModules.hardware` is the GB10 (kernel, driver, boot parameters, fwupd, ConnectX-7
 hot-plug), derived from graham33/nixos-dgx-spark. `nixosModules.kindling` is Kindling's host
 services (mentatd, the spark agent, diagnostics, MTUs, console, watchdog, dispram), ported from
-kindlingai/kindling-spark-os. `nixosModules.default` imports both. NOTICE says which files come
+kindlingai/kindling-spark-os, and models in NixOS containers. `nixosModules.default` imports both. NOTICE says which files come
 from where.
 
 ## Layout
@@ -18,9 +18,10 @@ from where.
 |Path|What|
 |---|---|
 |`flake.nix`|Modules, packages, apps (`import-kindling`, `generate-kernel-config`) and checks. `dispramStack` pins dispram's OGKM headers.|
-|`nix/modules/kindling/`|The services module and dispram's options.|
+|`nix/modules/kindling/`|The services module, dispram's options, and `models.nix`: models in NixOS containers.|
 |`nix/modules/hardware/`|The GB10 module and CX7 hot-plug, from graham33's `modules/`.|
 |`nix/packages.nix`|mentatd and the ray shim from mentat's source, the agent, spark-memory, py-spy from its wheel.|
+|`nix/cuda.nix`, `nix/overlays/`|The CUDA package set models' vLLM comes from: graham33's CUDA fixes, and mentat's client in place of Ray.|
 |`nix/pkgs/`|mentat's pin (`mentat-source.nix`) and `Cargo.lock`, its Python client, dispram, the CX7 hot-plug helper.|
 |`nix/tests/vm.nix`|The two-VM cluster test.|
 |`nix/checks/`|`hardware-eval`, `vendor` and `pins`.|
@@ -47,9 +48,10 @@ record and fails on any difference, so:
 - A file the modules need that is not vendored yet goes into the `files` list in
   `scripts/import-kindling.sh`, then import again.
 
-The patches only parameterise paths that NixOS lacks (`/bin/login`, `/usr/local/bin`,
-`/usr/share/kindling`) or fix what nixpkgs' compiler rejects. They keep the Ubuntu image's
-defaults, so each one could go upstream. Offering them there needs the owner's say-so.
+The patches parameterise paths that NixOS lacks (`/bin/login`, `/usr/local/bin`,
+`/usr/share/kindling`), fix what nixpkgs' compiler rejects, and let the status screen list
+systemd-nspawn machines where it has no docker. They keep the Ubuntu image's behaviour, so each
+one could go upstream. Offering them there needs the owner's say-so.
 
 ## graham33-derived files
 
@@ -57,8 +59,9 @@ They are this repository's now, and kernel and driver bumps are its job. Keep gr
 names (`hardware.dgx-spark.*`), so a host can move between the two modules. When copying more
 from graham33 or straylight-software, record the source revision and the files in NOTICE, and
 keep the MIT notice. The hardware module leaves out graham33's dashboard, fan control, vLLM
-module, `cudaSupport` and Flox cache, because a Kindling node runs its models in containers,
-and `/run/docker.sock`, which nothing here uses.
+module, `cudaSupport`, Flox cache, Podman and NVIDIA container toolkit, because a Kindling node
+runs its models in NixOS containers with their own CUDA package set. `nix/overlays/cuda-fixes.nix`
+is graham33's overlays/fixes.nix without its nodejs fix. Take his later fixes there.
 
 A kernel bump: change `kernel-configs/nvidia-kernel-source.nix`, then from the checkout's root
 run `nix run .#generate-kernel-config` and `nix run .#generate-kernel-config -- --flavour
@@ -136,6 +139,30 @@ alters what gets built at all.
 - `nix flake check` evaluates `packages`. An unfree package there fails evaluation, which is why
   the CX7 hot-plug helper is only reachable through the hardware module, which allows unfree.
 
+## Models in NixOS containers
+
+`services.kindling.models.<name>` (`nix/modules/kindling/models.nix`) follows mentat's contract
+for a model container (mentat's GUIDE.md and GUIDE-SERVE.md): the host's network, so mentatd
+answers on 127.0.0.1:6379; `MENTAT_GROUP`, `MENTAT_OPENAI_API` and `MENTAT_MODEL_PROVIDER`; then
+`python -m ray.register` for one rank, or `ray start` (mentatd's agent) with
+`VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1` and `MENTAT_PYTHON` for a distributed engine, whose other
+ranks the agent starts with that Python. What the recipes' compose files give their containers,
+the module gives too: GPU nodes and `/run/opengl-driver`, `/dev/infiniband`, unlimited memlock,
+a 64 MiB stack and no core dumps.
+
+- The container shares the host's network namespace, so its own firewall stays off. It would only
+  fail without CAP_NET_ADMIN.
+- nspawn will not start a container whose bind source is missing. NixOS makes the NVIDIA nodes
+  from udev as the modules load, so `kindling-gpu-nodes.service` makes them again, in order,
+  before any model. `/dev/infiniband` is made at boot, since a ConnectX port's RDMA devices
+  appear only once its cable is in.
+- The model's container units keep `restartIfChanged = false`, as mentatd does.
+- `services.kindling.vllm` evaluates on this nixpkgs only with graham33's CUDA fixes. No public
+  cache holds it, so check `nix path-info --store https://cache.flox.dev <outPath>` and
+  `https://cache.nixos-cuda.org` before promising a box a quick first build.
+- Kindling's recipes run their own engines (a vLLM nightly with patches, or gr8). Porting one
+  means packaging that engine in Nix, not reusing `services.kindling.vllm`.
+
 ## Firmware
 
 Firmware updates on a NixOS host go through fwupd and LVFS (README, "Firmware updates"). Never
@@ -162,9 +189,11 @@ the cabinets from `fwupd.org/downloads` by their SHA-256.
 ## What the checks prove
 
 - The VM test proves the services in x86_64 VMs without a GPU, a GB10 kernel or RDMA. It does not
-  prove `nvidia-smi`, dispramd, ConnectX ports or RoCE.
-- `hardware-eval` proves a GB10 host evaluates. It builds nothing, so it does not prove that the
-  kernel or the driver build or boot.
+  prove `nvidia-smi`, dispramd, ConnectX ports or RoCE. Its model is a stand-in engine, so it
+  proves the NixOS container's network, its mentat registration and the router's path to it,
+  not CUDA, the GPU or RDMA inside a container.
+- `hardware-eval` proves a GB10 host evaluates, models' CUDA vLLM included. It builds nothing,
+  so it does not prove that the kernel, the driver or vLLM build, boot or serve.
 - `vendor` proves the vendored tree is the recorded release plus the patches, and `pins` that
   the pins match it. Neither proves the release works.
 

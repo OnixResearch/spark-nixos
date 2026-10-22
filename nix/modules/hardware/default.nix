@@ -308,19 +308,10 @@ in
     # cudaCapabilities = [ "12.0" "12.1" ].
     nixpkgs.config.allowUnfree = true;
 
-    # `docker` runs Podman, so recipes written for kindling-spark-os's Docker still run. Unlike
-    # graham33's module there is no /run/docker.sock: nothing here talks to a Docker API. A host
-    # whose tools want one sets dockerSocket.enable.
-    virtualisation.podman = {
-      enable = true;
-      dockerCompat = true;
-      defaultNetwork.settings.dns_enabled = true;
-    };
-
-    # Trust the podman bridge so containers can reach host services
-    networking.firewall.trustedInterfaces = [ "podman+" ];
-
-    hardware.nvidia-container-toolkit.enable = true;
+    # No Podman and no NVIDIA container toolkit, unlike graham33's module: Kindling's models run
+    # in NixOS containers (services.kindling.models), which share the host's store and driver.
+    # A host that still runs recipes' OCI images sets virtualisation.podman.enable and
+    # hardware.nvidia-container-toolkit.enable.
 
     # RDMA over the ConnectX ports needs to pin the memory it registers, and
     # the NixOS default memlock ceiling of 8 MB is far too low: ibv_reg_mr

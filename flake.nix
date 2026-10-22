@@ -27,8 +27,12 @@
         kindling = ./nix/modules/kindling;
       };
 
-      # The programs the module runs, to build or reuse on their own.
-      packages = forAllSystems (pkgs: import ./nix/packages.nix { inherit pkgs; });
+      # The programs the modules run, to build or reuse on their own. vllm is models' CUDA vLLM
+      # for the GB10, which no public cache holds: build it once, on a box or an aarch64 builder.
+      packages = forAllSystems (pkgs: import ./nix/packages.nix { inherit pkgs; }
+        // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isAarch64 {
+          vllm = (import ./nix/cuda.nix { inherit pkgs; }).python3Packages.vllm;
+        });
 
       apps = forAllSystems (pkgs: {
         # nix run .#import-kindling -- <tag>: vendor another kindling-spark-os release.

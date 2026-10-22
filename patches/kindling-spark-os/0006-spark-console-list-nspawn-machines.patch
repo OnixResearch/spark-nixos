@@ -1,0 +1,27 @@
+List systemd-nspawn machines on the status screen, and skip docker where it is missing.
+
+A NixOS host runs its models in NixOS containers (systemd-nspawn) and may have no Docker
+or Podman at all. The screen then said "docker not answering yet" and showed none of its
+models. Where docker is installed, nothing changes.
+
+--- a/overlay/usr/local/bin/spark-console	2026-10-22 15:23:24.884051650 -0400
++++ b/overlay/usr/local/bin/spark-console	2026-10-22 15:23:24.953051718 -0400
+@@ -36,11 +36,17 @@
+ 	echo "${LABEL}containers${RESET}:"
+ 	# The docker client waits for a daemon that is still starting, so it gets 5 s.
+ 	# docker trims leading spaces from --format, so the indent is added after.
+-	if ctrs=$(timeout 5 docker ps --format '{{printf "%-16s" .Names}} {{.Status}}' 2>/dev/null); then
++	if ! command -v docker >/dev/null; then
++		:
++	elif ctrs=$(timeout 5 docker ps --format '{{printf "%-16s" .Names}} {{.Status}}' 2>/dev/null); then
+ 		[ -n "$ctrs" ] && echo "$ctrs" | head -8 | sed 's/^/  /'
+ 	else
+ 		echo "  docker not answering yet"
+ 	fi
++	# systemd-nspawn machines, which is how a NixOS host runs its models.
++	if command -v machinectl >/dev/null; then
++		timeout 5 machinectl list --no-legend --no-pager 2>/dev/null | awk '{printf "  %-16s running\n", $1}' | head -8
++	fi
+ 	echo
+ 	if ! st=$(curl -s -m 3 "$STATUS"); then
+ 		echo "${LABEL}mentat${RESET}: not answering on $STATUS"

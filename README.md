@@ -5,10 +5,10 @@ It has two NixOS modules:
 
 - `nixosModules.hardware`: the GB10 itself. NVIDIA's 7.0 kernel in 4 KiB and 64 KiB page builds,
   the NVIDIA driver, DGX OS's boot parameters, firmware updates through fwupd, ConnectX-7
-  hot-plug, Podman with the NVIDIA container toolkit, and unlimited memlock for RDMA.
+  hot-plug, and unlimited memlock for RDMA. No container runtime.
 - `nixosModules.kindling`: Kindling's host services. mentatd, the spark agent and its
-  diagnostics, port MTUs, and optionally the tty1 status screen, the hardware watchdog and
-  dispram.
+  diagnostics, port MTUs, models in NixOS containers, and optionally the tty1 status screen,
+  the hardware watchdog and dispram.
 
 `nixosModules.default` imports both.
 
@@ -19,11 +19,12 @@ It has two NixOS modules:
   services, on the `nixos-port` branch of
   [OnixResearch/kindling-spark-os](https://github.com/OnixResearch/kindling-spark-os), and this
   repository keeps that history. The scripts, the agent and dispram that the module runs are
-  vendored from kindling-spark-os v0.9.8 in `vendor/kindling-spark-os`, with five small patches
+  vendored from kindling-spark-os v0.9.8 in `vendor/kindling-spark-os`, with six small patches
   for NixOS in `patches/kindling-spark-os`.
 - [graham33/nixos-dgx-spark](https://github.com/graham33/nixos-dgx-spark) (MIT) runs NixOS on the
   Spark. The hardware module, the kernel configurations and the tools that generate them come
-  from it, at c646a19. The hardware module keeps graham33's `hardware.dgx-spark` options.
+  from it, at c646a19, and so do the CUDA fixes that let nixpkgs' vLLM build for the GB10. The
+  hardware module keeps graham33's `hardware.dgx-spark` options.
 - [straylight-software/nixos-dgx-spark](https://github.com/straylight-software/nixos-dgx-spark)
   (MIT) is a fork of graham33's from 2025-12-14. No files come from it, but the services module
   still works with it, and the VM test runs on its nixpkgs too.
@@ -32,14 +33,16 @@ See NOTICE for which files come from where, and under which licence.
 
 ## What has been tested
 
-- The services module runs in two x86_64 VMs that form a cluster (`checks.<system>.vm`).
-- A whole GB10 host, with the NVIDIA kernel and driver and every service, evaluates for the
-  4 KiB and the 64 KiB kernel (`checks.<system>.hardware-eval`). The checks do not build the
-  kernel.
+- The services module runs in two x86_64 VMs that form a cluster (`checks.<system>.vm`). A
+  stand-in engine in a NixOS container on one joins mentat, and the router on the other serves
+  it.
+- A whole GB10 host, with the NVIDIA kernel and driver, every service and two vLLM models in
+  NixOS containers, evaluates for the 4 KiB and the 64 KiB kernel
+  (`checks.<system>.hardware-eval`). The checks build neither the kernel nor CUDA vLLM.
 - mentatd, the agent, py-spy and dispram build for aarch64.
 
-Nothing here has run on a GB10 yet. dispram has not been validated on the NixOS driver, and no
-firmware has been flashed from NixOS.
+Nothing here has run on a GB10 yet. No model has used the GPU or RDMA from a NixOS container,
+dispram has not been validated on the NixOS driver, and no firmware has been flashed from NixOS.
 
 ## Using it
 
@@ -100,11 +103,12 @@ Put the cluster key outside the Nix store, in `/etc/spark/mentat.key` (mode 0400
 needs the same key. mentatd does not start without `/etc/spark/node.env`. An optional
 `/etc/spark/agent.env` takes `MENTAT_ROUTER_URL` and `ALLOWED_SOURCES`.
 
-Nothing here needs Docker. The hardware module runs Podman, with `docker` as an alias for it,
-so recipes written for kindling-spark-os's Docker still run, but it serves no
-`/run/docker.sock`. The snapshot and the status screen list containers with the host's own
-runtime: Podman's CLI, which reads root's container storage itself, without Podman's API
-service, or Docker's on a host that runs Docker instead. Run one of the two, not both.
+Nothing here needs Docker or Podman. Models run in NixOS containers (see Models), and the
+hardware module runs no container runtime. A host that still runs recipes' OCI images turns on
+`virtualisation.podman.enable` and `hardware.nvidia-container-toolkit.enable` itself. The
+snapshot and the status screen then list those containers with the host's own runtime:
+Podman's CLI, which reads root's container storage itself, without Podman's API service, or
+Docker's on a host that runs Docker instead. Run one of the two, not both.
 
 mentatd finds its peers by broadcast, and it announces only on interfaces that have a broadcast
 address. NixOS's scripted networking adds static addresses
@@ -159,6 +163,44 @@ at a `systemctl restart mentatd` run when no model group would mind.
 The hardware watchdog is off unless `services.kindling.watchdog.enable = true`. It can reset a
 host when process creation fails. Turning it on turns systemd's runtime watchdog off, so only
 one process owns `/dev/watchdog`.
+
+## Models
+
+`services.kindling.models.<name>` runs a model in a NixOS container named after it: a
+systemd-nspawn container that shares the host's network and Nix store, so it needs no container
+runtime and no image. It joins mentat as a recipe's container does. A single rank registers with
+this box's mentatd (`python -m ray.register`) while its engine runs. With `distributed`, mentat's
+agent (`ray start`) holds the ranks that the engine places on other boxes through vLLM's Ray
+executor. The router probes the engine's `/v1/models` and routes the names it lists there.
+
+```nix
+services.kindling.models.qwen = {
+  command = [
+    "${config.services.kindling.vllm}/bin/vllm" "serve" "/models/qwen3-8b"
+    "--port" "8000" "--enforce-eager" "--safetensors-load-strategy" "eager"
+  ];
+  bindMounts."/models/qwen3-8b".hostPath = "/srv/models/qwen3-8b";
+};
+```
+
+As a recipe's container does, the model gets the host's network, the GPU (its device nodes, and
+the driver at `/run/opengl-driver`), `/dev/infiniband` for NCCL, unlimited memlock, a 64 MiB
+stack and no core dumps. `dispram = true` mounts dispram's socket and plugin as recipes do. The
+engine logs to the container's journal (`journalctl -M qwen -u engine`), and the snapshot copies
+that to `/var/log/spark/model-qwen.log` for the agent. A switch leaves a running model alone, as
+it does mentatd. The host's firewall covers the engine's ports.
+
+`services.kindling.vllm` is nixpkgs' vLLM 0.29.0, built with CUDA 13.4 for compute capabilities
+12.0 and 12.1, with graham33's fixes, and with mentat's client in place of Ray. No public cache
+holds it, so the first build compiles torch, FlashAttention and vLLM on the box, which takes
+hours. `nix build .#packages.aarch64-linux.vllm` builds it ahead, on a box or an aarch64
+builder. graham33's module runs vLLM with `--enforce-eager` on the GB10, against illegal
+instruction crashes with some quantization formats.
+
+Kindling's published recipes do not use this vLLM. glm-5.3-flash-gx10 runs a vLLM nightly with
+its own patches and kernels, and gr8 runs Kindling's own CUDA engine. A recipe moves into a NixOS
+container once its engine is packaged in Nix. Until then, a host that runs it turns on Podman and
+the NVIDIA container toolkit.
 
 ## The driver
 
@@ -259,8 +301,8 @@ cabinets, staged each capsule byte for byte and set `OsIndications`.
 
 | Check | What it does |
 |---|---|
-| `vm` | Boots two NixOS VMs joined by a LAN and a fabric, with the firewall above. Checks that the daemons name themselves and mesh, that a router on one VM runs the other's agent tools, that the fabric passes what the LAN blocks, that ports get their MTU at boot and when they appear later, that the snapshot lists the containers with Podman's API service stopped, and that the status screen, the dispram mounts under Podman, the watchdog and a switch work. |
-| `hardware-eval` | Evaluates a whole GB10 host for both kernels without building it. |
+| `vm` | Boots two NixOS VMs joined by a LAN and a fabric, with the firewall above. Checks that the daemons name themselves and mesh, that a router on one VM runs the other's agent tools, that the fabric passes what the LAN blocks, that ports get their MTU at boot and when they appear later, that a stand-in engine in a NixOS container joins mentat and the router serves it, that the snapshot lists Podman's containers with its API service stopped, and that the status screen, the dispram mounts under Podman, the watchdog and a switch work. |
+| `hardware-eval` | Evaluates a whole GB10 host with two vLLM models for both kernels, without building it. |
 | `vendor` | Rebuilds `vendor/kindling-spark-os` from its recorded release and patches, and fails on any difference. |
 | `pins` | Compares mentat, py-spy and dispram's OGKM pin with the vendored release's Dockerfile and default stack. |
 | `kernel-config-tests` | The kernel configuration generator's tests. |
@@ -287,6 +329,8 @@ root shell.
   boots it.
 - **A driver**: the hardware module takes nixpkgs' `nvidiaPackages.latest`. dispram stays off
   until a box validates it on that driver.
+- **vLLM**: `services.kindling.vllm` follows nixpkgs' vLLM, with `nix/overlays/cuda-fixes.nix`
+  from graham33. When graham33 changes his overlays/fixes.nix, take the change there.
 
 ## Licence
 
