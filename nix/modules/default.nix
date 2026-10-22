@@ -34,7 +34,15 @@ in
       default = "/etc/spark/agent.env";
       description = "Optional path to the spark-agent environment file.";
     };
-    openFirewall = lib.mkEnableOption "the mentat and agent ports on all interfaces (trusted networks only)";
+    openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Open what mentatd and the agent listen on, TCP 6379, 6380 and 8090 and UDP 6382, on all
+        interfaces. Model endpoints, and the ports a group spanning boxes opens at run time, stay
+        closed. The README's NixOS section shows how to trust the cluster's interfaces instead.
+      '';
+    };
     console.enable = lib.mkEnableOption "the Kindling status screen on tty1 instead of a getty";
     watchdog.enable = lib.mkEnableOption "the Kindling hardware watchdog (can reset the machine)";
     connectxMtu = lib.mkOption {
