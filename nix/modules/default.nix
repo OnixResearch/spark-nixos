@@ -17,6 +17,13 @@ let
   # NixOS installs nvidia-smi in the driver's bin output, which /run/opengl-driver leaves out.
   # A unit's PATH has only its path packages and a few defaults, so each unit that runs it lists this.
   nvidiaBin = lib.optional config.hardware.nvidia.enabled config.hardware.nvidia.package.bin;
+  # The snapshot and the status screen run the Docker CLI. A host that runs Podman and not
+  # Docker serves the Docker API on Podman's socket, which NixOS's Podman module always enables.
+  # /run/docker.sock exists only with virtualisation.podman.dockerSocket.enable, which the
+  # straylight-software hardware module leaves off.
+  containerEnv = lib.optionalAttrs
+    (config.virtualisation.podman.enable && !config.virtualisation.docker.enable)
+    { DOCKER_HOST = "unix:///run/podman/podman.sock"; };
 in
 {
   imports = [ ./dispram.nix ];
@@ -150,7 +157,7 @@ in
       path = with pkgs; [
         coreutils gnugrep gnused gawk procps systemd util-linux docker rdma-core iproute2 packages.sparkMemory
       ] ++ nvidiaBin;
-      environment = { SPARK_MEMORY_PY = memory; };
+      environment = { SPARK_MEMORY_PY = memory; } // containerEnv;
       serviceConfig = {
         Type = "oneshot";
         Nice = 10;
@@ -218,7 +225,7 @@ in
         TERM = "linux";
         SPARK_LOGIN = "${pkgs.shadow}/bin/login";
         SPARK_LOGO_DIR = "${../../overlay/usr/share/kindling}";
-      };
+      } // containerEnv;
       serviceConfig = {
         ExecStart = "${pkgs.bash}/bin/bash ${../../overlay/usr/local/bin/spark-console}";
         StandardInput = "tty";

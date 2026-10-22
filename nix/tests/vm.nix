@@ -42,11 +42,11 @@ let
       ethernetMtu = 1400;
     };
 
-    # As the hardware module does.
+    # As both hardware modules do. graham33's also links /run/docker.sock, which the module no
+    # longer needs: the snapshot and the status screen reach Podman on its own socket.
     virtualisation.podman = {
       enable = true;
       dockerCompat = true;
-      dockerSocket.enable = true;
     };
 
     environment.etc."spark/mentat.key" = { text = "kindling-vm-test-key"; mode = "0400"; };
