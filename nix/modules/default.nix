@@ -166,6 +166,9 @@ in
         Type = "oneshot";
         Nice = 10;
         IOSchedulingClass = "idle";
+        # systemd gives a oneshot no start timeout, and the script's docker calls have none. A
+        # stuck Docker or Podman would otherwise freeze the agent's diagnostics until a reboot.
+        TimeoutStartSec = "5min";
         ExecStart = "${pkgs.bash}/bin/sh ${../../overlay/usr/local/bin/spark-log-snapshot.sh}";
       };
     };
