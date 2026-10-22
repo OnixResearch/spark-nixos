@@ -83,6 +83,18 @@ kindling-spark-os's `setup/packages.txt` installs the same packages, and its
   matter: recipes and launch scripts set `NCCL_IB_HCA=rocep1s0f0,...`. For an mlx5 device,
   rdma-core also loads IPoIB, iSER and NFS over RDMA. Nothing here uses them, so they stay out.
   `ibstat` needs `ib_umad`.
+- The kernel matches. Of the options DGX OS's 7.0.0-1019 `.config` turns on, nine are off in the
+  NixOS 7.0.14 `.config` built from `kernel-configs/`: compiler and Ubuntu markers, two sample
+  drivers, a USB gadget function, `DM_INIT`, `EFI_COCO_SECRET`, the ladder idle governor, and
+  `UEVENT_HELPER`, which graham33 turns off on purpose. Both kernels default to IOMMU
+  passthrough and to zeroing memory on allocation. Both kernel lines turn those off.
+- Port names match. systemd 261 reads a PCI slot from `firmware_node/sun` first (naming scheme
+  v257), then from `/sys/bus/pci/slots`. No Spark port or root port has a `sun`, and slot 7's
+  address is the LAN port's own, so the port stays `enP7s7`, as under DGX OS's systemd 255. The
+  ConnectX-7 ports sit in no slot and keep their path names. Schemes v258 to v261 change no PCI
+  name. No box has confirmed it yet.
+- NixOS runs `nvidia-persistenced --verbose`, and DGX OS runs it with `--persistence-mode`. The
+  daemon turns persistence mode on by default, so the two agree.
 - The boxes had no passwordless sudo, so nothing that needs root was read. That covers netplan's
   `40-cx7.yaml` (the fabric's addresses, which belong to the site anyway).
 

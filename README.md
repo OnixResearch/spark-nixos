@@ -128,7 +128,9 @@ cluster's interfaces in `node.env` instead, as the VM test does with
 appears, at boot or later, as a ConnectX port does when its cable goes in. On NetworkManager
 hosts, the dispatcher sets it again whenever a profile comes up, and also kicks mentatd's health
 check after a network change. Without NetworkManager, mentatd's own restart backoff, 2 to 60
-seconds, stands in for that check.
+seconds, stands in for that check. The script only raises a port's MTU. The Sparks checked run
+their ConnectX ports at 9000, set by their launch scripts, which gives RoCE 4096. On NixOS, set
+that in the host's network configuration, as `networking.interfaces.<port>.mtu`.
 
 NixOS's firewall is on, and closed to the cluster by default.
 `services.kindling.openFirewall = true` opens what mentatd and the agent listen on, TCP 6379,
@@ -287,7 +289,10 @@ NVIDIA publishes the Spark's firmware to [LVFS](https://fwupd.org/) as UEFI caps
 firmware (UEFI and GPU initialisation), the embedded controller, the USB-C power delivery
 controller and the TPM. fwupd stages each capsule in `EFI/UpdateCapsule` on the EFI system
 partition and sets the capsule bit in the `OsIndications` EFI variable, and the firmware applies
-it on the next boot. ConnectX-7 and NVMe firmware are not offered on LVFS.
+it on the next boot. ConnectX-7 and NVMe firmware are not offered on LVFS. DGX OS carries the
+ConnectX-7's in `nvidia-spark-mlnx-firmware-manager` and flashes it with mstflint, so update it
+from DGX OS too. `ethtool -i enp1s0f0np0` shows the running version: 28.45.4028 on the Sparks
+checked.
 
 A Spark on its factory firmware boots only DGX OS, so take the first update there
 (`sudo fwupdmgr refresh && sudo fwupdmgr update`). After that, NixOS can update itself. The
