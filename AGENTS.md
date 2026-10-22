@@ -173,6 +173,10 @@ a 64 MiB stack and no core dumps.
 
 - The container shares the host's network namespace, so its own firewall stays off. It would only
   fail without CAP_NET_ADMIN.
+- nspawn gives a container its own /dev/shm, a tenth of the memory, where recipes run with
+  `ipc: host` or `--shm-size 32g`. Models bind the host's /dev/shm instead. A NixOS container's
+  root has every capability, CAP_IPC_LOCK included, but a shell from `nixos-container run` gets
+  the container's 8 MiB memlock default: only the engine's unit raises it.
 - nspawn will not start a container whose bind source is missing. NixOS makes the NVIDIA nodes
   from udev as the modules load, so `kindling-gpu-nodes.service` makes them again, in order,
   before any model. `/dev/infiniband` is made at boot, since a ConnectX port's RDMA devices

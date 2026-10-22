@@ -136,6 +136,7 @@ pkgs.testers.runNixOSTest {
     # Waits use the driver's default timeout. The test driver in the nixpkgs that
     # straylight-software's hardware module needs takes seconds, and today's takes a timedelta.
     import json
+    import re
 
     def mcp(m, port, method, params):
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
@@ -275,6 +276,14 @@ pkgs.testers.runNixOSTest {
             "http://127.0.0.1:6381/v1/chat/completions"
         )
         assert "hello from a NixOS container" in out, out
+        # What recipes' containers get: unlimited locked memory, which RDMA pins against, and the
+        # host's /dev/shm, as their ipc: host shares it.
+        limits = spark2.succeed(
+            "nixos-container run standin -- sh -c 'cat /proc/$(systemctl show -p MainPID --value engine)/limits'"
+        )
+        assert re.search(r"Max locked memory\s+unlimited\s+unlimited", limits), limits
+        spark2.succeed("touch /dev/shm/kindling-probe")
+        spark2.succeed("nixos-container run standin -- test -e /dev/shm/kindling-probe")
         # spark2 has no docker: the agent's logs and the status screen show the model all the same.
         spark2.succeed("systemctl start spark-dmesg-snapshot")
         spark2.succeed("grep -q '^standin ' /var/log/spark/machines.log")

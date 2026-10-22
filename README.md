@@ -183,9 +183,13 @@ services.kindling.models.qwen = {
 };
 ```
 
-As a recipe's container does, the model gets the host's network, the GPU (its device nodes, and
-the driver at `/run/opengl-driver`), `/dev/infiniband` for NCCL, unlimited memlock, a 64 MiB
-stack and no core dumps. `dispram = true` mounts dispram's socket and plugin as recipes do. The
+As a recipe's container does, the model gets the host's network and `/dev/shm`, the GPU (its
+device nodes, and the driver at `/run/opengl-driver`), `/dev/infiniband` for NCCL, unlimited
+memlock, a 64 MiB stack and no core dumps. The page cache is dropped before it starts, since the
+GPU allocates from the same memory. `memoryMax = "112G"` caps it, as `docker run --memory 112g
+--memory-swap 112g` does. `register = false` runs an engine that coordinates its own ranks, such
+as vLLM with `--nnodes` and `--headless`, without mentat. `dispram = true` mounts dispram's
+socket and plugin as recipes do. The
 engine logs to the container's journal (`journalctl -M qwen -u engine`), and the snapshot copies
 that to `/var/log/spark/model-qwen.log` for the agent. A switch leaves a running model alone, as
 it does mentatd. The host's firewall covers the engine's ports.

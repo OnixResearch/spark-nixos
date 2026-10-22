@@ -89,6 +89,36 @@ let
         '';
       };
 
+      register = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Join mentat. Without it the engine runs alone, as a vLLM that coordinates its own ranks
+          (`--nnodes`, `--headless`) does, and the router does not see it.
+        '';
+      };
+
+      memoryMax = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "112G";
+        description = ''
+          Cap the container's memory, with no swap beyond it, as `docker run --memory 112g
+          --memory-swap 112g` does. The GB10's GPU shares this memory, so a cap leaves the host
+          room to keep sshd and mentatd alive.
+        '';
+      };
+
+      dropCaches = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Drop the page cache before the container starts. The GB10's GPU allocates from the
+          same memory as the cache, so cached files shrink what the engine can have, and its
+          weights' pages would sit in the cache twice.
+        '';
+      };
+
       python = mkOption {
         type = types.package;
         default = kindling.vllmPython;
@@ -165,7 +195,10 @@ let
     # As for mentatd: a switch must not restart a model that is serving.
     restartIfChanged = false;
     bindMounts =
-      lib.mapAttrs (_: b: { inherit (b) hostPath isReadOnly; }) m.bindMounts
+      # The host's /dev/shm, as recipes' ipc: host gives theirs. A container's own is a tenth
+      # of the memory, and recipes ask for more (--shm-size 32g).
+      { "/dev/shm" = { hostPath = "/dev/shm"; isReadOnly = false; }; }
+      // lib.mapAttrs (_: b: { inherit (b) hostPath isReadOnly; }) m.bindMounts
       // lib.optionalAttrs m.gpu (
         lib.genAttrs gpuNodes (node: { hostPath = node; isReadOnly = false; })
         // { "/run/opengl-driver" = { hostPath = "/run/opengl-driver"; isReadOnly = true; }; }
@@ -214,7 +247,8 @@ let
           // lib.optionalAttrs m.dispram { PYTHONPATH = "/opt/kindling/dispram/python"; }
           // m.environment;
         script =
-          (if m.distributed then ''
+          (if !m.register then ""
+          else if m.distributed then ''
             # mentat's agent, in place of Ray's. It detaches, and holds the engine's other ranks.
             ${packages.mentatd}/bin/ray start
           '' else ''
@@ -278,6 +312,14 @@ in
         (name: m: lib.nameValuePair "container@${name}" {
           after = [ "mentatd.service" ] ++ lib.optional m.gpu "kindling-gpu-nodes.service";
           requires = lib.optional m.gpu "kindling-gpu-nodes.service";
+          preStart = lib.mkIf m.dropCaches (lib.mkBefore ''
+            sync
+            echo 3 > /proc/sys/vm/drop_caches
+          '');
+          serviceConfig = lib.mkIf (m.memoryMax != null) {
+            MemoryMax = m.memoryMax;
+            MemorySwapMax = "0";
+          };
         })
         models
       // {
