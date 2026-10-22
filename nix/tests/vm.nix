@@ -124,8 +124,11 @@ pkgs.testers.runNixOSTest {
         spark1.wait_for_unit("spark-watchdog.service")
         spark1.wait_until_succeeds("journalctl -u spark-watchdog | grep -q 'armed: timeout=60s'")
         spark1.fail("journalctl -u spark-watchdog | grep -q 'could not set timeout'")
+        spark1.succeed("grep -qx active /sys/class/watchdog/watchdog0/state")
+        spark1.succeed("grep -qx 60 /sys/class/watchdog/watchdog0/timeout")
         spark1.succeed("systemctl stop spark-watchdog")
         spark1.succeed("journalctl -u spark-watchdog | grep -q 'disarming on signal'")
+        spark1.succeed("grep -qx inactive /sys/class/watchdog/watchdog0/state")
 
     for m in (spark1, spark2):
         m.wait_for_unit("mentatd.service")
