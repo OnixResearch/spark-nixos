@@ -1,0 +1,18 @@
+Take the logo directory from SPARK_LOGO_DIR, defaulting to /usr/share/kindling.
+
+NixOS has no /usr/share/kindling. The module points it at the vendored logo.
+
+diff --git a/overlay/usr/local/bin/spark-logo b/overlay/usr/local/bin/spark-logo
+index 0e9da48..a63d659 100755
+--- a/overlay/usr/local/bin/spark-logo
++++ b/overlay/usr/local/bin/spark-logo
+@@ -23,7 +23,8 @@ MARGIN = 16
+ 
+ 
+ def logo():
+-    path = (glob.glob("/usr/share/kindling/logo-*.rgba") or [None])[0]
++    directory = os.environ.get("SPARK_LOGO_DIR", "/usr/share/kindling")
++    path = (glob.glob(os.path.join(directory, "logo-*.rgba")) or [None])[0]
+     if path is None:
+         sys.exit(1)
+     size = int(os.path.basename(path)[5:-5])

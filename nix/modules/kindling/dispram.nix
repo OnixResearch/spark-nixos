@@ -8,17 +8,17 @@ let
     && cfg.validatedDriver != ""
     && cfg.ogkmVersion != ""
     && cfg.ogkmVersion == cfg.validatedDriver;
-  package = pkgs.callPackage ../pkgs/dispram.nix {
+  package = pkgs.callPackage ../../pkgs/dispram.nix {
     inherit (cfg) ogkmSource ogkmVersion;
   };
   # The parts of dispram/ that run inside model containers, with their license.
   plugin = lib.fileset.toSource {
-    root = ../../dispram;
+    root = ../../../vendor/kindling-spark-os/dispram;
     fileset = lib.fileset.unions [
-      ../../dispram/python
-      ../../dispram/vllm
-      ../../dispram/LICENSE-GPL
-      ../../dispram/BUNDLING-EXCEPTION
+      ../../../vendor/kindling-spark-os/dispram/python
+      ../../../vendor/kindling-spark-os/dispram/vllm
+      ../../../vendor/kindling-spark-os/dispram/LICENSE-GPL
+      ../../../vendor/kindling-spark-os/dispram/BUNDLING-EXCEPTION
     ];
   };
 in

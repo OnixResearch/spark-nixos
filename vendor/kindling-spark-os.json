@@ -1,0 +1,24 @@
+{
+  "owner": "kindlingai",
+  "repo": "kindling-spark-os",
+  "ref": "v0.9.8",
+  "rev": "a71f6ecb3d2f18b7071b437738f37eb66db24150",
+  "hash": "sha256-SZKywxpEk5wFN+mUm6bHfMSeuxEQUUMouwsaHTvy0VA=",
+  "files": [
+    "LICENSE",
+    "VERSION",
+    "Dockerfile",
+    "stacks.yaml",
+    "agent/README.md",
+    "agent/spark-agent.py",
+    "agent/spark-memory.py",
+    "dispram",
+    "overlay/usr/local/bin/spark-console",
+    "overlay/usr/local/bin/spark-log-snapshot.sh",
+    "overlay/usr/local/bin/spark-logo",
+    "overlay/usr/local/bin/spark-watchdog.py",
+    "overlay/usr/local/sbin/sparkos-mentatd-check",
+    "overlay/usr/local/sbin/sparkos-mtu",
+    "overlay/usr/share/kindling"
+  ]
+}

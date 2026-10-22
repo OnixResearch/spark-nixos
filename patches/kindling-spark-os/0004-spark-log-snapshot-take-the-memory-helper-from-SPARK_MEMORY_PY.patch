@@ -1,0 +1,20 @@
+Take the memory helper from SPARK_MEMORY_PY, defaulting to the Ubuntu path.
+
+NixOS has no /usr/local/bin. The agent already reads the same variable.
+
+diff --git a/overlay/usr/local/bin/spark-log-snapshot.sh b/overlay/usr/local/bin/spark-log-snapshot.sh
+index 53597b4..2e8d1ce 100755
+--- a/overlay/usr/local/bin/spark-log-snapshot.sh
++++ b/overlay/usr/local/bin/spark-log-snapshot.sh
+@@ -64,8 +64,9 @@ _nv=$(dmesg -T 2>/dev/null |
+ # allocations skip process RSS, so ps accounts for about 6 GiB of the 121 GiB
+ # on a serving node. Only the host can do this: /proc inside the container
+ # shows container processes alone.
+-if [ -x /usr/local/bin/spark-memory.py ]; then
+-  { date -u "+# %Y-%m-%dT%H:%M:%SZ"; /usr/local/bin/spark-memory.py -v 2>&1; } \
++memory_helper=${SPARK_MEMORY_PY:-/usr/local/bin/spark-memory.py}
++if [ -x "$memory_helper" ]; then
++  { date -u "+# %Y-%m-%dT%H:%M:%SZ"; "$memory_helper" -v 2>&1; } \
+     | atomic "$LOGDIR/memory.log"
+ fi
+ 

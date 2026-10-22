@@ -1,0 +1,149 @@
+#!/bin/bash
+# Cluster and box status for the console, redrawn every REFRESH seconds (default 30), in a frame
+# that fills the screen. Its edges also give a KVM's auto-adjust something to lock onto.
+# Esc or Enter hands the terminal to login. spark-console --once prints one screen and exits.
+set -u
+# The frame is drawn in multi-byte box characters, which lengths and slices must count as one.
+export LC_ALL=C.UTF-8
+REFRESH=${REFRESH:-30}
+STATUS=${MENTAT_STATUS:-http://127.0.0.1:6380/status}
+
+node_ip() {  # a mentat node id is the hex of "mentat:<ip>" padded with NULs
+	printf '%b' "$(echo "$1" | sed -e 's/\(00\)*$//' -e 's/../\\x&/g')" | sed 's/^mentat://'
+}
+
+name_of() {  # a short hostname for an IP, or the IP
+	local n
+	n=$(getent hosts "$1" | awk '{print $2; exit}')
+	echo "${n%%.*}" | grep . || echo "$1"
+}
+
+# kindling orange (xterm 208). The Linux console has 16 colours and shows its nearest one.
+BRAND=$(printf '\033[1;38;5;208m')
+LABEL=$(printf '\033[38;5;214m')
+UP=$(printf '\033[32m') STALE=$(printf '\033[33m') DOWN=$(printf '\033[1;31m')
+RESET=$(printf '\033[0m')
+
+# The body of the screen, one line per line, for a frame whose inside is $1 columns wide.
+body() {
+	local cols=$1 st
+	printf 'up %s, load %s\n' "$(uptime -p | sed 's/^up //')" "$(cut -d' ' -f1-3 /proc/loadavg)"
+	ip -o -4 addr show scope global | awk '$2 !~ /^(docker|br-|veth)/ {printf "  %-16s %s\n", $2, $4}'
+	timeout 5 nvidia-smi --query-gpu=name,utilization.gpu,temperature.gpu,power.draw --format=csv,noheader 2>/dev/null \
+		| awk -F', ' '{printf "  GPU %s  util %s  %sC  %s\n", $1, $2, $3, $4}'
+	free -g | awk '/^Mem:/ {printf "  memory %d of %d GiB used\n", $3, $2}'
+	echo
+	echo "${LABEL}containers${RESET}:"
+	# The docker client waits for a daemon that is still starting, so it gets 5 s.
+	# docker trims leading spaces from --format, so the indent is added after.
+	if ctrs=$(timeout 5 docker ps --format '{{printf "%-16s" .Names}} {{.Status}}' 2>/dev/null); then
+		[ -n "$ctrs" ] && echo "$ctrs" | head -8 | sed 's/^/  /'
+	else
+		echo "  docker not answering yet"
+	fi
+	echo
+	if ! st=$(curl -s -m 3 "$STATUS"); then
+		echo "${LABEL}mentat${RESET}: not answering on $STATUS"
+		return
+	fi
+	local head
+	head=$(node_ip "$(echo "$st" | jq -r '.head_node_id')")
+	printf '%smentat%s: proto %s, head %s\n' "$LABEL" "$RESET" "$(echo "$st" | jq -r .proto)" "$(name_of "$head")"
+	echo "$st" | jq -r '.peers | to_entries[] | [.key, (if .value.alive then (if .value.stale then "stale" else "up" end) else "DOWN" end), (.value.last_seen_ms // 0 | tostring)] | @tsv' \
+		| while IFS=$'\t' read -r id state seen; do
+			ip=$(node_ip "$id")
+			case $state in up) colour=$UP ;; stale) colour=$STALE ;; *) colour=$DOWN ;; esac
+			printf '  %-12s %-15s %s%s%s\n' "$(name_of "$ip")" "$ip" "$colour" "$state" "$RESET"
+		done
+	# The model list wraps after a comma, and its continuation lines line up under the first name.
+	echo "$st" | jq -r '[.groups, (.peers[].groups)] | add | keys[] | select(startswith("agent-") | not)' 2>/dev/null | sort -u \
+		| awk -v w="$cols" '
+			BEGIN { line = "  models: " }
+			{ s = (n++ ? "," : "") $0; if (n > 1 && length(line s) > w) { print line ","; line = "          " $0 } else line = line s }
+			END { print (n ? line : line "none") }'
+}
+
+# The time in the title bar. printf's %()T is a bash builtin, so the clock ticks without a process.
+now() {
+	printf '%(%Y-%m-%d %H:%M:%S %Z)T' -1
+}
+
+# The line inside the frame: $1 padded with spaces to $2 visible columns, colour codes not counted.
+pad() {
+	local plain
+	plain=$(printf '%s' "$1" | sed 's/\x1b\[[0-9;]*m//g')
+	printf '%s%*s' "$1" "$(($2 - ${#plain} > 0 ? $2 - ${#plain} : 0))" ''
+}
+
+# The whole screen: a frame on its edges, the title bar, the body, and the footer in the bottom
+# border. The last line has no newline, so the console does not scroll the top border away.
+screen() {
+	local cols rows inner bar left right footer fplain i
+	cols=$(tput cols 2>/dev/null || echo 80)
+	rows=$(tput lines 2>/dev/null || echo 24)
+	inner=$((cols - 4))
+	printf -v bar '%*s' "$((cols - 2))" ''
+	bar=${bar// /─}
+	left="${BRAND}kindling${RESET} spark OS $(cat /etc/kindling/version 2>/dev/null || echo '?') ($(cat /etc/spark-os-version 2>/dev/null || echo '?'))"
+	right="$(hostname)  $(now)"
+	local -a lines
+	mapfile -t lines < <(body "$inner" | cut -c1-"$inner")
+	printf '┌%s┐\n' "$bar"
+	printf '│ %s %s │\n' "$(pad "$left" "$((inner - ${#right} - 1))")" "$right"
+	printf '├%s┤\n' "$bar"
+	for ((i = 0; i < rows - 4; i++)); do
+		printf '│ %s │\n' "$(pad "${lines[i]:-}" "$inner")"
+	done
+	footer="─ ${BRAND}kindling${RESET} - Esc to log in - refreshes every ${REFRESH}s "
+	fplain=$(printf '%s' "$footer" | sed 's/\x1b\[[0-9;]*m//g')
+	printf '└%s%s┘' "$footer" "${bar:0:$((cols - 2 - ${#fplain}))}"
+}
+
+# The logo goes inside the body's top-right corner, half a line below the title bar's divider. The
+# framebuffer's cell size gives the pixel offsets.
+logo() {
+	local w h cw ch
+	IFS=, read -r w h < /sys/class/graphics/fb0/virtual_size || return
+	cw=$((w / $(tput cols))) ch=$((h / $(tput lines)))
+	spark-logo --top $((3 * ch + ch / 2)) --right $((2 * cw)) 2>/dev/null
+}
+
+if [ "${1:-}" = --once ]; then screen; echo; exit 0; fi
+
+# Each screen is built in memory, then written over the last from the top-left corner in one write.
+# Every line spans the full width, so nothing needs clearing and the screen never goes blank.
+draw() {
+	frame=$(screen)
+	printf '\033[H%s' "$frame"
+	[ -e /dev/fb0 ] && command -v spark-logo >/dev/null && logo
+	cols=$(tput cols 2>/dev/null || echo 80)
+	redraw_at=$((SECONDS + REFRESH))
+}
+
+# Between screens, only the clock is rewritten, once a second on the second: the title bar's last
+# columns, so the console repaints about 23 characters.
+tick() {
+	local t
+	printf -v t '%(%Y-%m-%d %H:%M:%S %Z)T' -1
+	printf '\033[2;%dH%s' "$((cols - 1 - ${#t}))" "$t"
+}
+
+printf '\033[?25l'  # no cursor blinking in the frame
+clear
+draw
+while :; do
+	us=${EPOCHREALTIME#*.}
+	wait_us=$((1000000 - 10#$us))
+	printf -v wait '%d.%06d' $((wait_us / 1000000)) $((wait_us % 1000000))
+	if IFS= read -rsn1 -t "$wait" key; then
+		if [ "$key" = $'\e' ] || [ -z "$key" ]; then
+			printf '\033[?25h'
+			clear
+			exec "${SPARK_LOGIN:-/bin/login}"
+		fi
+	elif ((SECONDS >= redraw_at)); then
+		draw
+	else
+		tick
+	fi
+done

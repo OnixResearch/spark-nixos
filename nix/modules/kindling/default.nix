@@ -2,18 +2,18 @@
 
 let
   cfg = config.services.kindling;
-  packages = import ../packages.nix { inherit pkgs; };
+  packages = import ../../packages.nix { inherit pkgs; };
   # Units refer to single overlay files, so only those files are copied to the store. A copy of
   # the whole checkout would carry .git too, and any edit or fetch would restart the units.
-  mtuScript = "${pkgs.bash}/bin/sh ${../../overlay/usr/local/sbin/sparkos-mtu}";
+  mtuScript = "${pkgs.bash}/bin/sh ${../../../vendor/kindling-spark-os/overlay/usr/local/sbin/sparkos-mtu}";
   mtuEnabled = cfg.connectxMtu != 0 || cfg.ethernetMtu != 0;
-  checkScript = "${pkgs.bash}/bin/bash ${../../overlay/usr/local/sbin/sparkos-mentatd-check}";
+  checkScript = "${pkgs.bash}/bin/bash ${../../../vendor/kindling-spark-os/overlay/usr/local/sbin/sparkos-mentatd-check}";
   memory = "${packages.sparkMemory}/bin/spark-memory";
   routeReady = pkgs.writeShellScript "kindling-mentat-route" ''
     [ -n "''${MENTAT_NODE_IP:-}" ] || ${pkgs.iproute2}/bin/ip -4 route get 8.8.8.8 >/dev/null
   '';
   logo = pkgs.writeShellScriptBin "spark-logo" ''
-    exec ${pkgs.python3}/bin/python3 ${../../overlay/usr/local/bin/spark-logo} "$@"
+    exec ${pkgs.python3}/bin/python3 ${../../../vendor/kindling-spark-os/overlay/usr/local/bin/spark-logo} "$@"
   '';
   # NixOS installs nvidia-smi in the driver's bin output, which /run/opengl-driver leaves out.
   # A unit's PATH has only its path packages and a few defaults, so each unit that runs it lists this.
@@ -85,7 +85,7 @@ in
     # The Ubuntu image's GRUB, DGX bind mounts, uid migration, and trial timer are intentionally
     # not installed: the NixOS host owns its own boot loader, user database, and persistent state.
     environment.etc = {
-      "kindling/version".text = builtins.readFile ../../VERSION;
+      "kindling/version".text = builtins.readFile ../../../vendor/kindling-spark-os/VERSION;
       "spark-os-version".text = "NixOS ${config.system.nixos.version}\n";
     } // lib.optionalAttrs (cfg.connectxMtu != 0) {
       "kindling/connectx-mtu".text = "${toString cfg.connectxMtu}\n";
@@ -173,7 +173,7 @@ in
         # systemd gives a oneshot no start timeout, and the script's docker calls have none. A
         # stuck Docker or Podman would otherwise freeze the agent's diagnostics until a reboot.
         TimeoutStartSec = "5min";
-        ExecStart = "${pkgs.bash}/bin/sh ${../../overlay/usr/local/bin/spark-log-snapshot.sh}";
+        ExecStart = "${pkgs.bash}/bin/sh ${../../../vendor/kindling-spark-os/overlay/usr/local/bin/spark-log-snapshot.sh}";
       };
     };
     systemd.timers.spark-dmesg-snapshot = {
@@ -245,10 +245,10 @@ in
       environment = {
         TERM = "linux";
         SPARK_LOGIN = "${pkgs.shadow}/bin/login";
-        SPARK_LOGO_DIR = "${../../overlay/usr/share/kindling}";
+        SPARK_LOGO_DIR = "${../../../vendor/kindling-spark-os/overlay/usr/share/kindling}";
       } // containerEnv;
       serviceConfig = {
-        ExecStart = "${pkgs.bash}/bin/bash ${../../overlay/usr/local/bin/spark-console}";
+        ExecStart = "${pkgs.bash}/bin/bash ${../../../vendor/kindling-spark-os/overlay/usr/local/bin/spark-console}";
         StandardInput = "tty";
         StandardOutput = "tty";
         TTYPath = "/dev/tty1";
@@ -276,7 +276,7 @@ in
         WATCHDOG_PROBE_CMD = "${pkgs.coreutils}/bin/true";
       };
       serviceConfig = {
-        ExecStart = "${pkgs.python3}/bin/python3 ${../../overlay/usr/local/bin/spark-watchdog.py}";
+        ExecStart = "${pkgs.python3}/bin/python3 ${../../../vendor/kindling-spark-os/overlay/usr/local/bin/spark-watchdog.py}";
         StateDirectory = "spark-watchdog";
         Restart = "on-failure";
         RestartPreventExitStatus = 3;

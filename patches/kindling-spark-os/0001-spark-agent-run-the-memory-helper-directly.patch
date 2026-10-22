@@ -1,0 +1,20 @@
+Run the memory helper as a program, not as a python3 argument.
+
+NixOS installs spark-memory as a wrapper that sets its own interpreter, so
+"python3 <helper>" would run the wrapper script as Python. The Ubuntu
+image's helper is an executable Python file, so running it directly works
+there too.
+
+diff --git a/agent/spark-agent.py b/agent/spark-agent.py
+index fc4f14e..d1d1fe1 100755
+--- a/agent/spark-agent.py
++++ b/agent/spark-agent.py
+@@ -310,7 +310,7 @@ def t_memory_accounting(**_):
+     """
+     helper = os.environ.get("SPARK_MEMORY_PY", "/usr/local/bin/spark-memory.py")
+     if os.path.exists(helper):
+-        return stamped(cap(run(["python3", helper, "-v"], timeout=30)), helper)
++        return stamped(cap(run([helper, "-v"], timeout=30)), helper)
+     return stamped(f"({helper} not present)", "memory accounting")
+ 
+ 

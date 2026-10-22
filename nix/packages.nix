@@ -101,7 +101,7 @@ let
     nativeBuildInputs = [ pkgs.makeWrapper ];
     installPhase = ''
       runHook preInstall
-      install -Dm644 ${../agent/spark-memory.py} "$out/libexec/spark-memory.py"
+      install -Dm644 ${../vendor/kindling-spark-os/agent/spark-memory.py} "$out/libexec/spark-memory.py"
       mkdir -p "$out/bin"
       makeWrapper ${pkgs.python3}/bin/python3 "$out/bin/spark-memory" \
         --add-flags "$out/libexec/spark-memory.py"
@@ -150,7 +150,7 @@ in
     nativeBuildInputs = [ pkgs.makeWrapper ];
     installPhase = ''
       runHook preInstall
-      install -Dm644 ${../agent/spark-agent.py} "$out/libexec/spark-agent.py"
+      install -Dm644 ${../vendor/kindling-spark-os/agent/spark-agent.py} "$out/libexec/spark-agent.py"
       mkdir -p "$out/bin"
       makeWrapper ${agentPython}/bin/python3 "$out/bin/spark-agent" \
         --add-flags "$out/libexec/spark-agent.py" \

@@ -1,0 +1,17 @@
+Take the login program from SPARK_LOGIN, defaulting to /bin/login.
+
+NixOS has no /bin/login. The module points SPARK_LOGIN at shadow's login.
+
+diff --git a/overlay/usr/local/bin/spark-console b/overlay/usr/local/bin/spark-console
+index cbccffc..b08a9b1 100755
+--- a/overlay/usr/local/bin/spark-console
++++ b/overlay/usr/local/bin/spark-console
+@@ -139,7 +139,7 @@ while :; do
+ 		if [ "$key" = $'\e' ] || [ -z "$key" ]; then
+ 			printf '\033[?25h'
+ 			clear
+-			exec /bin/login
++			exec "${SPARK_LOGIN:-/bin/login}"
+ 		fi
+ 	elif ((SECONDS >= redraw_at)); then
+ 		draw

@@ -1,8 +1,8 @@
 {
-  description = "Kindling Spark host services for an existing NixOS GB10 installation";
+  description = "NixOS for NVIDIA GB10 hosts (DGX Spark, ASUS Ascent GX10) running Kindling's cluster services";
 
-  # The module takes nothing from this input. It builds the packages and the checks, and a host
-  # flake can point it at its own nixpkgs with kindling.inputs.nixpkgs.follows = "nixpkgs".
+  # The modules take nothing from this input. It builds the packages and the checks, and a host
+  # flake can point it at its own nixpkgs with spark-nixos.inputs.nixpkgs.follows = "nixpkgs".
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = { self, nixpkgs }:
@@ -12,12 +12,26 @@
     in
     {
       # A path, so option declarations name this file and a second import is a no-op.
-      nixosModules.default = ./nix/modules/default.nix;
+      nixosModules.default = ./nix/modules/kindling;
 
       # The programs the module runs, to build or reuse on their own.
       packages = forAllSystems (pkgs: import ./nix/packages.nix { inherit pkgs; });
 
+      apps = forAllSystems (pkgs: {
+        # nix run .#import-kindling -- <tag>: vendor another kindling-spark-os release.
+        import-kindling = {
+          type = "app";
+          program = pkgs.lib.getExe (pkgs.writeShellApplication {
+            name = "import-kindling";
+            runtimeInputs = with pkgs; [ coreutils gawk gnused git gnupatch jq ];
+            text = builtins.readFile ./scripts/import-kindling.sh;
+          });
+          meta.description = "Vendor the kindling-spark-os files spark-nixos uses, at one release";
+        };
+      });
+
       checks = forAllSystems (pkgs: {
+        vendor = import ./nix/checks/vendor.nix { inherit pkgs; };
         vm = import ./nix/tests/vm.nix {
           inherit pkgs;
           module = self.nixosModules.default;

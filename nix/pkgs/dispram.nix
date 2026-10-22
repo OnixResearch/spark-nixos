@@ -7,11 +7,11 @@ stdenv.mkDerivation {
   version = "0.1";
   # Only what is built and installed, so an edit elsewhere in dispram/ leaves dispramd alone.
   src = lib.fileset.toSource {
-    root = ../../dispram;
+    root = ../../vendor/kindling-spark-os/dispram;
     fileset = lib.fileset.unions [
-      ../../dispram/rmlist.c
-      ../../dispram/dispramd.py
-      ../../dispram/LICENSE
+      ../../vendor/kindling-spark-os/dispram/rmlist.c
+      ../../vendor/kindling-spark-os/dispram/dispramd.py
+      ../../vendor/kindling-spark-os/dispram/LICENSE
     ];
   };
 
