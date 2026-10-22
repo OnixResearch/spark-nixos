@@ -85,11 +85,9 @@ pkgs.testers.runNixOSTest {
   nodes.spark2 = box;
 
   testScript = ''
+    # Waits use the driver's default timeout. The test driver in the nixpkgs that
+    # straylight-software's hardware module needs takes seconds, and today's takes a timedelta.
     import json
-    from datetime import timedelta
-
-    def minutes(n):
-        return timedelta(minutes=n)
 
     def mcp(m, port, method, params):
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
@@ -107,9 +105,7 @@ pkgs.testers.runNixOSTest {
     # First, so the rest of the test runs with the watchdog disarmed.
     with subtest("spark-watchdog arms the hardware watchdog and disarms on stop"):
         spark1.wait_for_unit("spark-watchdog.service")
-        spark1.wait_until_succeeds(
-            "journalctl -u spark-watchdog | grep -q 'armed: timeout=60s'", timeout=minutes(2)
-        )
+        spark1.wait_until_succeeds("journalctl -u spark-watchdog | grep -q 'armed: timeout=60s'")
         spark1.fail("journalctl -u spark-watchdog | grep -q 'could not set timeout'")
         spark1.succeed("systemctl stop spark-watchdog")
         spark1.succeed("journalctl -u spark-watchdog | grep -q 'disarming on signal'")
@@ -130,8 +126,7 @@ pkgs.testers.runNixOSTest {
         for m, peer in ((spark1, "192.168.1.2"), (spark2, "192.168.1.1")):
             m.wait_until_succeeds(
                 "curl -sf http://127.0.0.1:6380/status | jq -e "
-                f"'[.peers[] | select(.alive and .node_ip == \"{peer}\")] | length == 1'",
-                timeout=minutes(5),
+                f"'[.peers[] | select(.alive and .node_ip == \"{peer}\")] | length == 1'"
             )
 
     with subtest("the head daemon holds both boxes' agents"):
@@ -149,7 +144,7 @@ pkgs.testers.runNixOSTest {
                 print("groups at the head:", groups)
             return {"agent-spark1", "agent-spark2"} <= set(groups)
 
-        retry(agents_at_head, timeout=minutes(5))
+        retry(agents_at_head)
 
     with subtest("the router merges both agents and runs a tool on the other box"):
         spark1.wait_for_open_port(6381)
@@ -157,8 +152,7 @@ pkgs.testers.runNixOSTest {
             "curl -sf -X POST -H 'content-type: application/json' "
             "-d '{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/list\"}' "
             "http://127.0.0.1:6381/mcp | jq -e '.result.tools[] | select(.name == \"network\") "
-            "| .inputSchema.properties.__group.enum | contains([\"agent-spark1\", \"agent-spark2\"])'",
-            timeout=minutes(5),
+            "| .inputSchema.properties.__group.enum | contains([\"agent-spark1\", \"agent-spark2\"])'"
         )
         text = tool(spark1, 6381, "network", {"__group": "agent-spark2"})
         assert text.startswith("[spark2 "), text[:200]
@@ -176,9 +170,7 @@ pkgs.testers.runNixOSTest {
     with subtest("the MTU unit gives the en* ports the configured MTU"):
         for m in (spark1, spark2):
             for iface in ("eno1", "enp1s0f0np0"):
-                m.wait_until_succeeds(
-                    f"test $(cat /sys/class/net/{iface}/mtu) = 1400", timeout=minutes(2)
-                )
+                m.wait_until_succeeds(f"test $(cat /sys/class/net/{iface}/mtu) = 1400")
 
     with subtest("the snapshot gives the agent dmesg, the units and the containers"):
         spark1.succeed("podman load -i ${pluginCheck}")
@@ -195,9 +187,7 @@ pkgs.testers.runNixOSTest {
     with subtest("the status screen on tty1 shows the box, its peer and its containers"):
         spark1.wait_for_unit("spark-console.service")
         for pattern in ("spark2 +192\\.168\\.1\\.2 +up", "model +Up"):
-            spark1.wait_until_succeeds(
-                f"tr -cd '[:print:]' < /dev/vcs1 | grep -Eq '{pattern}'", timeout=minutes(2)
-            )
+            spark1.wait_until_succeeds(f"tr -cd '[:print:]' < /dev/vcs1 | grep -Eq '{pattern}'")
         screen = spark1.succeed("tr -cd '[:print:]' < /dev/vcs1")
         assert "kindling spark OS" in screen and "spark1" in screen, screen
         assert "not found" not in screen, screen
