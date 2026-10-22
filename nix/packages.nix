@@ -24,7 +24,8 @@ let
   };
 
   agentPython = pkgs.python3.withPackages (_: [ rayShim ]);
-  driverPath = "/run/opengl-driver/bin";
+  # No wrapper here puts nvidia-smi on PATH. The NixOS module adds the configured driver's
+  # bin output to each unit that runs it.
   agentPath = lib.makeBinPath [
     agentPython
     pkgs.iproute2
@@ -44,8 +45,7 @@ let
       install -Dm644 ${../agent/spark-memory.py} "$out/libexec/spark-memory.py"
       mkdir -p "$out/bin"
       makeWrapper ${pkgs.python3}/bin/python3 "$out/bin/spark-memory" \
-        --add-flags "$out/libexec/spark-memory.py" \
-        --prefix PATH : "${driverPath}"
+        --add-flags "$out/libexec/spark-memory.py"
       runHook postInstall
     '';
   };
@@ -68,7 +68,7 @@ in
       substituteInPlace "$out/bin/mentatd-probe-machine" \
         --replace-fail '#!/bin/sh' '#!${pkgs.runtimeShell}'
       wrapProgram "$out/bin/mentatd-probe-machine" \
-        --prefix PATH : "${lib.makeBinPath [ pkgs.coreutils pkgs.gawk ]}:${driverPath}"
+        --prefix PATH : "${lib.makeBinPath [ pkgs.coreutils pkgs.gawk ]}"
       ln -s mentatd "$out/bin/ray"
     '';
     meta = {
@@ -90,7 +90,7 @@ in
       mkdir -p "$out/bin"
       makeWrapper ${agentPython}/bin/python3 "$out/bin/spark-agent" \
         --add-flags "$out/libexec/spark-agent.py" \
-        --prefix PATH : "${agentPath}:${driverPath}" \
+        --prefix PATH : "${agentPath}" \
         --set-default PY_SPY "${pkgs.py-spy}/bin/py-spy" \
         --set-default SPARK_MEMORY_PY "${memory}/bin/spark-memory"
       runHook postInstall

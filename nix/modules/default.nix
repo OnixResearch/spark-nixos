@@ -13,10 +13,9 @@ let
   logo = pkgs.writeShellScriptBin "spark-logo" ''
     exec ${pkgs.python3}/bin/python3 ${source}/overlay/usr/local/bin/spark-logo "$@"
   '';
-  console = pkgs.writeShellScript "kindling-console" ''
-    export PATH=/run/opengl-driver/bin:$PATH
-    exec ${pkgs.bash}/bin/bash ${source}/overlay/usr/local/bin/spark-console
-  '';
+  # NixOS installs nvidia-smi in the driver's bin output, which /run/opengl-driver leaves out.
+  # A unit's PATH has only its path packages and a few defaults, so each unit that runs it lists this.
+  nvidiaBin = lib.optional config.hardware.nvidia.enabled config.hardware.nvidia.package.bin;
 in
 {
   imports = [ ./dispram.nix ];
@@ -95,7 +94,8 @@ in
         ConditionPathExists = cfg.nodeEnvironmentFile;
         StartLimitIntervalSec = 0;
       };
-      path = [ pkgs.iproute2 ];
+      # mentatd announces the name hostname(1) prints, and "unknown" when there is none.
+      path = [ pkgs.iproute2 pkgs.hostname ];
       serviceConfig = {
         EnvironmentFile = cfg.nodeEnvironmentFile;
         ExecStartPre = routeReady;
@@ -112,7 +112,7 @@ in
       wantedBy = [ "multi-user.target" ];
       wants = [ "network-online.target" ];
       after = [ "network-online.target" "mentatd.service" ];
-      path = with pkgs; [ coreutils iproute2 procps pciutils usbutils rdma-core python3 ];
+      path = with pkgs; [ coreutils iproute2 procps pciutils usbutils rdma-core python3 ] ++ nvidiaBin;
       environment = {
         AGENT_LOG_DIR = "/var/log/spark";
         SPARK_MEMORY_PY = memory;
@@ -138,7 +138,9 @@ in
 
     systemd.services.spark-dmesg-snapshot = {
       description = "Snapshot host-only diagnostics for the Kindling agent";
-      path = with pkgs; [ coreutils gnugrep gnused gawk procps systemd docker rdma-core iproute2 packages.sparkMemory ];
+      path = with pkgs; [
+        coreutils gnugrep gnused gawk procps systemd util-linux docker rdma-core iproute2 packages.sparkMemory
+      ] ++ nvidiaBin;
       environment = { SPARK_MEMORY_PY = memory; };
       serviceConfig = {
         Type = "oneshot";
@@ -199,14 +201,17 @@ in
       after = [ "systemd-user-sessions.service" "mentatd.service" ];
       conflicts = [ "getty@tty1.service" ];
       before = [ "getty.target" ];
-      path = with pkgs; [ coreutils procps iproute2 curl jq gnused gawk gnugrep util-linux ncurses docker logo ];
+      # procps before coreutils: the status screen runs uptime -p, which coreutils' uptime lacks.
+      path = with pkgs; [
+        procps coreutils iproute2 curl jq gnused gawk gnugrep util-linux ncurses docker hostname getent logo
+      ] ++ nvidiaBin;
       environment = {
         TERM = "linux";
         SPARK_LOGIN = "${pkgs.shadow}/bin/login";
         SPARK_LOGO_DIR = "${source}/overlay/usr/share/kindling";
       };
       serviceConfig = {
-        ExecStart = console;
+        ExecStart = "${pkgs.bash}/bin/bash ${source}/overlay/usr/local/bin/spark-console";
         StandardInput = "tty";
         StandardOutput = "tty";
         TTYPath = "/dev/tty1";
