@@ -88,8 +88,7 @@ let
   # bin output to each unit that runs it.
   agentPath = lib.makeBinPath [
     agentPython
-    pkgs.iproute2
-    pkgs.rdma-core
+    pkgs.iproute2 # ip, and rdma for the network tool
     pkgs.procps
     pkgs.pciutils
     pkgs.usbutils

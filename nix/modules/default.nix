@@ -93,6 +93,9 @@ in
       "kindling/ethernet-mtu".text = "${toString cfg.ethernetMtu}\n";
     };
 
+    # The agent reads it from boot, and the snapshot first writes to it 30 seconds in.
+    systemd.tmpfiles.rules = [ "d /var/log/spark 0755 root root -" ];
+
     # NixOS owns accounts; unlike the Ubuntu image, never copy passwords/groups from DGX OS.
     users.groups.spark-agent = { };
     users.users.spark-agent = {
@@ -132,7 +135,8 @@ in
       wantedBy = [ "multi-user.target" ];
       wants = [ "network-online.target" ];
       after = [ "network-online.target" "mentatd.service" ];
-      path = with pkgs; [ coreutils iproute2 procps pciutils usbutils rdma-core python3 ] ++ nvidiaBin;
+      # The wrapper puts the agent's own tools on PATH. The unit adds the driver's nvidia-smi.
+      path = nvidiaBin;
       environment = {
         AGENT_LOG_DIR = "/var/log/spark";
         SPARK_MEMORY_PY = memory;
@@ -159,7 +163,7 @@ in
     systemd.services.spark-dmesg-snapshot = {
       description = "Snapshot host-only diagnostics for the Kindling agent";
       path = with pkgs; [
-        coreutils gnugrep gnused gawk procps systemd util-linux docker-client rdma-core iproute2 packages.sparkMemory
+        coreutils gnugrep gnused gawk procps systemd util-linux docker-client iproute2 packages.sparkMemory
       ] ++ nvidiaBin;
       environment = { SPARK_MEMORY_PY = memory; } // containerEnv;
       serviceConfig = {
@@ -178,7 +182,6 @@ in
       timerConfig = {
         OnBootSec = "30s";
         OnUnitActiveSec = "60s";
-        Persistent = true;
       };
     };
 
