@@ -9,10 +9,23 @@
     let
       forAllSystems = f: nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ]
         (system: f nixpkgs.legacyPackages.${system});
+
+      # NVIDIA/open-gpu-kernel-modules at the driver of vendor/kindling-spark-os/stacks.yaml's
+      # default stack: the RM API headers dispram was validated against.
+      dispramStack = {
+        version = "580.178.04";
+        rev = "c8e699821c23e4335bf23330a54a23d15cfb95e9";
+        hash = "sha256-7eXEROG2rQK9+Ag26nG4jFPrnKeveVUQ0ugIAshJZPQ=";
+      };
     in
     {
-      # A path, so option declarations name this file and a second import is a no-op.
-      nixosModules.default = ./nix/modules/kindling;
+      # Paths, so option declarations name their files and a second import is a no-op.
+      # default is both: the GB10 hardware, and Kindling's services on it.
+      nixosModules = {
+        default = ./nix/modules;
+        hardware = ./nix/modules/hardware;
+        kindling = ./nix/modules/kindling;
+      };
 
       # The programs the module runs, to build or reuse on their own.
       packages = forAllSystems (pkgs: import ./nix/packages.nix { inherit pkgs; });
@@ -53,6 +66,10 @@
           python3 -m pytest -p no:cacheprovider test_generate_config.py -v
           touch "$out"
         '';
+        hardware-eval = import ./nix/checks/hardware-eval.nix {
+          inherit pkgs nixpkgs dispramStack;
+          module = self.nixosModules.default;
+        };
         vendor = import ./nix/checks/vendor.nix { inherit pkgs; };
         vm = import ./nix/tests/vm.nix {
           inherit pkgs;
@@ -62,12 +79,11 @@
         # dispram against stacks.yaml's default stack, the release it was validated on, so a
         # compiler or nixpkgs change that breaks the -Werror build shows up here.
         dispram = pkgs.callPackage ./nix/pkgs/dispram.nix {
-          ogkmVersion = "580.178.04";
+          ogkmVersion = dispramStack.version;
           ogkmSource = pkgs.fetchFromGitHub {
             owner = "NVIDIA";
             repo = "open-gpu-kernel-modules";
-            rev = "c8e699821c23e4335bf23330a54a23d15cfb95e9";
-            hash = "sha256-7eXEROG2rQK9+Ag26nG4jFPrnKeveVUQ0ugIAshJZPQ=";
+            inherit (dispramStack) rev hash;
           };
         };
       });
