@@ -4,8 +4,8 @@ NixOS for NVIDIA GB10 hosts (DGX Spark, ASUS Ascent GX10) that run Kindling's cl
 It has two NixOS modules:
 
 - `nixosModules.hardware`: the GB10 itself. NVIDIA's 7.0 kernel in 4 KiB and 64 KiB page builds,
-  the NVIDIA driver, DGX OS's boot parameters, firmware updates through fwupd, ConnectX-7
-  hot-plug, and unlimited memlock for RDMA. No container runtime.
+  the NVIDIA driver, DGX OS's boot parameters and tuning, RoCE, firmware updates through fwupd,
+  and ConnectX-7 hot-plug. No container runtime.
 - `nixosModules.kindling`: Kindling's host services. mentatd, the spark agent and its
   diagnostics, port MTUs, models in NixOS containers, and optionally the tty1 status screen,
   the hardware watchdog and dispram.
@@ -201,6 +201,34 @@ Kindling's published recipes do not use this vLLM. glm-5.3-flash-gx10 runs a vLL
 its own patches and kernels, and gr8 runs Kindling's own CUDA engine. A recipe moves into a NixOS
 container once its engine is packaged in Nix. Until then, a host that runs it turns on Podman and
 the NVIDIA container toolkit.
+
+## What it takes from DGX OS
+
+DGX OS tunes the Spark through small NVIDIA packages, one setting each. kindling-spark-os's
+image installs the same ones. The hardware module carries them, as read from three Sparks on DGX
+OS 7.5 and 7.6:
+
+| DGX OS | spark-nixos |
+|---|---|
+| kernel line: `pci=pcie_bus_safe`, `initcall_blacklist=tegra234_cbb_init`, `init_on_alloc=0`, `iommu.passthrough=0`, `console=tty0 console=ttyS0,921600`, `earlycon=uart,mmio32,0x16A00000` | the same, plus graham33's `kho=off` and `module_blacklist` |
+| `nvidia-cppc-cpufreq-options`, `nv-cpu-governor` | `cppc_cpufreq.auto_sel_mode=1`, and the kernel's default governor, performance |
+| `nvidia-sbsa-gwdt-options` | `sbsa_gwdt.action=1` |
+| `nvidia-drm-options-modeset0` | nvidia-drm loads with `modeset=0` |
+| `nv-persistence-mode` | `nvidia-persistenced` |
+| `nvidia-kernel-defaults` | `arp_ignore=1`, `arp_announce=2` |
+| Ubuntu's `rp_filter=2` | the firewall checks the reverse path loosely |
+| `nvidia-spark-limits`, `nv-limits` | unlimited memlock, and 500000 open files, for logins |
+| `nvidia-no-systemd-suspend` | the suspend targets are masked |
+| `nvidia-nvme-options` | NVMe interrupt coalescing at boot |
+| rdma-core's udev rules | `ib_uverbs` and `rdma_ucm` load at boot, and RDMA devices get DGX OS's names, such as `rocep1s0f0` |
+| `dgx-spark-mlnx-hotplug` | ConnectX-7 hot-plug |
+| `nvidia-mstflint-loader` | `mstflint` and `nvme-cli`, without the mstflint kernel module |
+
+It leaves out what a cluster node does not need, or what belongs to the site: the DGX
+dashboard, Docker and the container toolkit, NVIDIA's telemetry and OTA updates, rasdaemon,
+smartd, lldpd, Avahi's `spark-XXXX.local` names, and the ConnectX-7 firmware manager.
+`scripts/dgx-os-tuning.sh` prints a DGX OS box's tuning without changing anything, to compare
+after a DGX OS update: `ssh <box> bash -s < scripts/dgx-os-tuning.sh`.
 
 ## The driver
 

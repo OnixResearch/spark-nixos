@@ -63,6 +63,27 @@ module, `cudaSupport`, Flox cache, Podman and NVIDIA container toolkit, because 
 runs its models in NixOS containers with their own CUDA package set. `nix/overlays/cuda-fixes.nix`
 is graham33's overlays/fixes.nix without its nodejs fix. Take his later fixes there.
 
+Where graham33's module and DGX OS differ, the hardware module follows DGX OS, because
+kindling-spark-os does too: nvidia-drm loads with `modeset=0`, not KMS, and the kernel consoles
+are `tty0` and the UART, not `tty1`, where Kindling's status screen runs.
+
+## DGX OS parity
+
+The hardware module carries the tuning that DGX OS's NVIDIA packages install, one setting each,
+as read from three Sparks on DGX OS 7.5 and 7.6. README's "What it takes from DGX OS" lists them.
+kindling-spark-os's `setup/packages.txt` installs the same packages, and its
+`setup/customize.sh` writes the same kernel line, so the two agree.
+
+- `scripts/dgx-os-tuning.sh` prints a box's tuning and changes nothing:
+  `ssh <box> bash -s < scripts/dgx-os-tuning.sh`. After a DGX OS update, run it and compare. A
+  new NVIDIA package shows up in its package list.
+- rdma-core's own udev rules call helpers by FHS paths (`/lib/systemd/systemd-modules-load`,
+  a bare `rdma_rename`), which NixOS lacks. So the module loads `ib_uverbs` and `rdma_ucm`
+  itself and takes only the naming rule, with `rdma_rename`'s store path. The names matter:
+  recipes and launch scripts set `NCCL_IB_HCA=rocep1s0f0,...`.
+- The boxes had no passwordless sudo, so nothing that needs root was read. That covers netplan's
+  `40-cx7.yaml` (the fabric's addresses, which belong to the site anyway).
+
 A kernel bump: change `kernel-configs/nvidia-kernel-source.nix`, then from the checkout's root
 run `nix run .#generate-kernel-config` and `nix run .#generate-kernel-config -- --flavour
 nvidia-64k`. `checks.<system>.hardware-eval` evaluates both kernels. No check builds the kernel:

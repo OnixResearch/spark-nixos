@@ -223,7 +223,11 @@ in
     boot.kernelPackages = if cfg.useNvidiaKernel then nvidiaKernel else pkgs.linuxPackages_latest;
 
     boot.kernelParams = [
-      "console=tty1"
+      # DGX OS's and kindling-spark-os's consoles: the current VT and the GB10's UART, with the
+      # UART from the earliest boot. Not tty1, where Kindling's status screen runs.
+      "console=tty0"
+      "console=ttyS0,921600"
+      "earlycon=uart,mmio32,0x16A00000"
       # Module-autoload kill switches for rarely needed attack surface that
       # has recently produced local privilege escalations:
       #
@@ -263,6 +267,16 @@ in
       # such as ibv_reg_mr then fail with ENOMEM under memory pressure,
       # breaking NCCL and RoCE.
       "kho=off"
+      # These three are on DGX OS's command line and kindling-spark-os's, on every box. Not
+      # zeroing each page as it is allocated (the kernel config turns that on) saves time on
+      # the large allocations models make in the GB10's unified memory.
+      "init_on_alloc=0"
+      # Translated DMA. NVIDIA's kernel config defaults to passthrough, and DGX OS's nv-iommu
+      # turns it off for the Spark.
+      "iommu.passthrough=0"
+      # nvidia-sbsa-gwdt-options: the SBSA watchdog panics at its first timeout, which leaves a
+      # message on the console before the second resets the box. spark-watchdog pets it.
+      "sbsa_gwdt.action=1"
     ] ++ lib.optional (cfg.useNvidiaKernel && cfg.cppcAutonomousMode) "cppc_cpufreq.auto_sel_mode=1";
 
     boot.blacklistedKernelModules = [
@@ -272,8 +286,14 @@ in
     ];
 
     services.xserver.videoDrivers = [ "nvidia" ];
+    # No KMS from nvidia-drm, unlike graham33's desktop: DGX OS (nvidia-drm-options-modeset0)
+    # and kindling-spark-os both load it with modeset=0, and the console stays on the firmware's
+    # framebuffer.
+    boot.extraModprobeConfig = ''
+      options nvidia-drm modeset=0
+    '';
     hardware.nvidia = {
-      modesetting.enable = true;
+      modesetting.enable = false;
       open = true;
       nvidiaPersistenced = true;
       nvidiaSettings = true;
@@ -324,6 +344,9 @@ in
     security.pam.loginLimits = [
       { domain = "*"; type = "soft"; item = "memlock"; value = "unlimited"; }
       { domain = "*"; type = "hard"; item = "memlock"; value = "unlimited"; }
+      # nv-limits, on DGX OS and kindling-spark-os.
+      { domain = "*"; type = "soft"; item = "nofile"; value = "500000"; }
+      { domain = "*"; type = "hard"; item = "nofile"; value = "500000"; }
     ];
 
     environment.systemPackages = with pkgs; [
@@ -331,7 +354,56 @@ in
       iperf3
       ethtool
       rdma-core
+      # kindling-spark-os installs both: mstflint queries ConnectX-7 firmware, and nvme-cli
+      # sets the coalescing below.
+      mstflint
+      nvme-cli
     ];
+
+    # nvidia-kernel-defaults: two ports in one subnet, as a ConnectX-7 pair can be, must each
+    # answer ARP only for their own address. mentat's GUIDE.md asks for the same.
+    boot.kernel.sysctl = {
+      "net.ipv4.conf.all.arp_ignore" = 1;
+      "net.ipv4.conf.default.arp_ignore" = 1;
+      "net.ipv4.conf.all.arp_announce" = 2;
+      "net.ipv4.conf.default.arp_announce" = 2;
+    };
+    # DGX OS checks the reverse path loosely (rp_filter 2). The firewall's strict check would
+    # drop replies that a multi-port fabric routes back through another port.
+    networking.firewall.checkReversePath = lib.mkDefault "loose";
+
+    # nvidia-no-systemd-suspend: a cluster node never suspends.
+    systemd.targets.suspend.enable = false;
+    systemd.targets.hybrid-sleep.enable = false;
+    systemd.targets.suspend-then-hibernate.enable = false;
+
+    # RoCE as DGX OS sets it up with rdma-core's udev rules: the verbs and RDMA CM device
+    # modules, and RDMA devices named after their PCI path (rocep1s0f0, roceP2p1s0f1), the names
+    # recipes give NCCL_IB_HCA. rdma-core's own rules call helpers by FHS paths, so only the
+    # naming rule is taken, with its helper's store path.
+    boot.kernelModules = [ "ib_uverbs" "rdma_ucm" ];
+    services.udev.extraRules = ''
+      ACTION=="add", SUBSYSTEM=="infiniband", PROGRAM="${pkgs.rdma-core}/lib/udev/rdma_rename %k NAME_FALLBACK"
+    '';
+
+    # nvidia-nvme-options: interrupt coalescing on every NVMe drive, as DGX OS sets it each boot.
+    systemd.services.nvme-interrupt-coalescing = {
+      description = "Configure NVMe interrupt coalescing";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "systemd-udev-settle.service" "systemd-udevd.service" ];
+      unitConfig.ConditionPathExistsGlob = "/dev/nvme[0-9]*";
+      path = [ pkgs.nvme-cli ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        for dev in /dev/nvme[0-9]*; do
+          [[ $dev =~ ^/dev/nvme[0-9]+$ ]] || continue
+          nvme set-feature "$dev" -f 8 --value 0x107
+        done
+      '';
+    };
 
     # The clock lock lives in the driver's per-GPU state, which is lost if the
     # driver lets the GPU go: nvidia-persistenced keeps it initialised, and
