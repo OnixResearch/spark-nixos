@@ -377,11 +377,11 @@ in
     systemd.targets.hybrid-sleep.enable = false;
     systemd.targets.suspend-then-hibernate.enable = false;
 
-    # RoCE as DGX OS sets it up with rdma-core's udev rules: the verbs and RDMA CM device
-    # modules, and RDMA devices named after their PCI path (rocep1s0f0, roceP2p1s0f1), the names
-    # recipes give NCCL_IB_HCA. rdma-core's own rules call helpers by FHS paths, so only the
-    # naming rule is taken, with its helper's store path.
-    boot.kernelModules = [ "ib_uverbs" "rdma_ucm" ];
+    # RoCE as DGX OS sets it up with rdma-core's udev rules: the verbs, RDMA CM and MAD device
+    # modules (ibstat needs ib_umad), and RDMA devices named after their PCI path (rocep1s0f0,
+    # roceP2p1s0f1), the names recipes give NCCL_IB_HCA. rdma-core's own rules call helpers by
+    # FHS paths, so only the naming rule is taken, with its helper's store path.
+    boot.kernelModules = [ "ib_uverbs" "rdma_ucm" "ib_umad" ];
     services.udev.extraRules = ''
       ACTION=="add", SUBSYSTEM=="infiniband", PROGRAM="${pkgs.rdma-core}/lib/udev/rdma_rename %k NAME_FALLBACK"
     '';

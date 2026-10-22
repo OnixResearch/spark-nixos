@@ -78,9 +78,11 @@ kindling-spark-os's `setup/packages.txt` installs the same packages, and its
   `ssh <box> bash -s < scripts/dgx-os-tuning.sh`. After a DGX OS update, run it and compare. A
   new NVIDIA package shows up in its package list.
 - rdma-core's own udev rules call helpers by FHS paths (`/lib/systemd/systemd-modules-load`,
-  a bare `rdma_rename`), which NixOS lacks. So the module loads `ib_uverbs` and `rdma_ucm`
-  itself and takes only the naming rule, with `rdma_rename`'s store path. The names matter:
-  recipes and launch scripts set `NCCL_IB_HCA=rocep1s0f0,...`.
+  a bare `rdma_rename`), which NixOS lacks. So the module loads `ib_uverbs`, `rdma_ucm` and
+  `ib_umad` itself and takes only the naming rule, with `rdma_rename`'s store path. The names
+  matter: recipes and launch scripts set `NCCL_IB_HCA=rocep1s0f0,...`. For an mlx5 device,
+  rdma-core also loads IPoIB, iSER and NFS over RDMA. Nothing here uses them, so they stay out.
+  `ibstat` needs `ib_umad`.
 - The boxes had no passwordless sudo, so nothing that needs root was read. That covers netplan's
   `40-cx7.yaml` (the fabric's addresses, which belong to the site anyway).
 
