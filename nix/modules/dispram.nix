@@ -9,7 +9,7 @@ let
     && cfg.ogkmVersion != ""
     && cfg.ogkmVersion == cfg.validatedDriver;
   package = pkgs.callPackage ../pkgs/dispram.nix {
-    inherit (cfg) ogkmSource;
+    inherit (cfg) ogkmSource ogkmVersion;
   };
   # The parts of dispram/ that run inside model containers, with their license.
   plugin = lib.fileset.toSource {

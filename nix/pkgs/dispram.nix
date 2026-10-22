@@ -1,6 +1,6 @@
 # OGKM must be a caller-pinned NVIDIA/open-gpu-kernel-modules source tree at the
 # exact release declared by services.kindling.dispram.ogkmVersion.
-{ lib, stdenv, ogkmSource }:
+{ lib, stdenv, ogkmSource, ogkmVersion }:
 
 stdenv.mkDerivation {
   pname = "dispram";
@@ -19,6 +19,13 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
+    # The RM structures rmlist.c passes change between releases, so the headers must come from
+    # the declared one. OGKM records its release in version.mk.
+    have=$(sed -n 's/^NVIDIA_VERSION[[:space:]]*=[[:space:]]*//p' ${ogkmSource}/version.mk)
+    if [ "$have" != ${lib.escapeShellArg ogkmVersion} ]; then
+      echo "ogkmSource holds open-gpu-kernel-modules '$have', not ogkmVersion ${ogkmVersion}" >&2
+      exit 1
+    fi
     $CC -O2 -Wall -Werror -shared -fPIC rmlist.c -o librmlist.so \
       -I${ogkmSource}/src/common/sdk/nvidia/inc \
       -I${ogkmSource}/kernel-open/common/inc \
