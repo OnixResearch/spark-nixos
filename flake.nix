@@ -28,9 +28,31 @@
           });
           meta.description = "Vendor the kindling-spark-os files spark-nixos uses, at one release";
         };
+        # nix run .#generate-kernel-config: regenerate kernel-configs/ after a kernel bump in
+        # kernel-configs/nvidia-kernel-source.nix. Run it from the checkout's root.
+        generate-kernel-config = {
+          type = "app";
+          program = "${pkgs.writeShellScript "generate-kernel-config" ''
+            exec ${pkgs.python3}/bin/python3 ${./scripts/generate-terse-dgx-config.py} "$@"
+          ''}";
+          meta.description = "Generate the terse GB10 kernel configuration from NVIDIA's annotations";
+        };
       });
 
       checks = forAllSystems (pkgs: {
+        # The generator's own tests, on dummy configs. The ones that need nix skip themselves.
+        kernel-config-tests = pkgs.runCommand "kernel-config-tests"
+          {
+            src = pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.unions [ ./scripts/generate-terse-dgx-config.py ./tests ];
+            };
+            nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pytest ])) ];
+          } ''
+          cd "$src/tests"
+          python3 -m pytest -p no:cacheprovider test_generate_config.py -v
+          touch "$out"
+        '';
         vendor = import ./nix/checks/vendor.nix { inherit pkgs; };
         vm = import ./nix/tests/vm.nix {
           inherit pkgs;
