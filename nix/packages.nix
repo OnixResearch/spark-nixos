@@ -24,6 +24,54 @@ let
     pythonImportsCheck = [ "ray.register" ];
   };
 
+  # py-spy from the wheel the Dockerfile pins (PY_SPY_VERSION, PY_SPY_SHA256), so a NixOS box
+  # runs the Ubuntu image's binary whatever the host's nixpkgs is. The nixpkgs that the
+  # straylight-software hardware module needs marks its py-spy 0.4.0 broken on aarch64, and the
+  # agent would not evaluate there. The wheels hold a static binary. x86_64 is for the VM test.
+  pySpyVersion = "0.4.2";
+  pySpyWheels = {
+    aarch64-linux = {
+      platform = "manylinux_2_17_aarch64.manylinux2014_aarch64";
+      hash = "sha256-FCiH6YSk5UEHHJmkQB/4w3cPJV0ynb0PZOjB3VGILM4=";
+    };
+    x86_64-linux = {
+      platform = "manylinux_2_5_x86_64.manylinux1_x86_64";
+      hash = "sha256-rrAyNAkZnHhfcwZF6fS7enucosSB8sMxpVZCtdE/pS8=";
+    };
+  };
+  pySpy =
+    let
+      system = pkgs.stdenv.hostPlatform.system;
+      wheel = pySpyWheels.${system} or (throw "py-spy: no pinned wheel for ${system}");
+    in
+    pkgs.stdenvNoCC.mkDerivation {
+      pname = "py-spy";
+      version = pySpyVersion;
+      src = pkgs.fetchurl {
+        url = "https://files.pythonhosted.org/packages/py2.py3/p/py-spy/py_spy-${pySpyVersion}-py2.py3-none-${wheel.platform}.whl";
+        inherit (wheel) hash;
+      };
+      dontUnpack = true;
+      nativeBuildInputs = [ pkgs.unzip ];
+      installPhase = ''
+        runHook preInstall
+        unzip -q "$src" 'py_spy-${pySpyVersion}.data/scripts/py-spy'
+        install -Dm755 'py_spy-${pySpyVersion}.data/scripts/py-spy' "$out/bin/py-spy"
+        runHook postInstall
+      '';
+      # The binary as the wheel ships it.
+      dontStrip = true;
+      dontPatchELF = true;
+      meta = {
+        description = "Sampling profiler for Python programs, from the pinned upstream wheel";
+        homepage = "https://github.com/benfred/py-spy";
+        license = lib.licenses.mit;
+        sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
+        platforms = lib.attrNames pySpyWheels;
+        mainProgram = "py-spy";
+      };
+    };
+
   agentPython = pkgs.python3.withPackages (_: [ rayShim ]);
   # No wrapper here puts nvidia-smi on PATH. The NixOS module adds the configured driver's
   # bin output to each unit that runs it.
@@ -92,7 +140,7 @@ in
       makeWrapper ${agentPython}/bin/python3 "$out/bin/spark-agent" \
         --add-flags "$out/libexec/spark-agent.py" \
         --prefix PATH : "${agentPath}" \
-        --set-default PY_SPY "${pkgs.py-spy}/bin/py-spy" \
+        --set-default PY_SPY "${pySpy}/bin/py-spy" \
         --set-default SPARK_MEMORY_PY "${memory}/bin/spark-memory"
       runHook postInstall
     '';
@@ -100,4 +148,5 @@ in
   };
 
   sparkMemory = memory;
+  inherit pySpy;
 }

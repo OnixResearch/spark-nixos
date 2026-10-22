@@ -125,7 +125,7 @@ in
       environment = {
         AGENT_LOG_DIR = "/var/log/spark";
         SPARK_MEMORY_PY = memory;
-        PY_SPY = "${pkgs.py-spy}/bin/py-spy";
+        PY_SPY = "${packages.pySpy}/bin/py-spy";
       };
       serviceConfig = {
         User = "spark-agent";
