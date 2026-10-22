@@ -89,7 +89,17 @@ pkgs.testers.runNixOSTest {
       systemd.services.spark-console.environment.KINDLING_TEST_GENERATION = "2";
     };
   };
-  nodes.spark2 = box;
+  nodes.spark2 = {
+    imports = [ box ];
+    # A third port for the hotplug subtest. Only the initrd has rules naming the test's NICs, so
+    # name this one in stage 2 too, as udev names a ConnectX port that shows up after boot.
+    virtualisation.interfaces.enp9s0 = { vlan = 3; assignIP = false; };
+    services.udev.packages = [
+      (pkgs.writeTextDir "lib/udev/rules.d/10-kindling-test-port.rules" ''
+        SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="52:54:00:12:03:02", NAME="enp9s0"
+      '')
+    ];
+  };
 
   testScript = ''
     # Waits use the driver's default timeout. The test driver in the nixpkgs that
@@ -174,10 +184,20 @@ pkgs.testers.runNixOSTest {
         spark1.succeed("curl -sf -m 5 -o /dev/null http://192.168.2.2:45678/")
         spark1.fail("curl -sf -m 5 -o /dev/null http://192.168.1.2:45678/")
 
-    with subtest("the MTU unit gives the en* ports the configured MTU"):
+    with subtest("each en* port gets the configured MTU at boot"):
         for m in (spark1, spark2):
             for iface in ("eno1", "enp1s0f0np0"):
                 m.wait_until_succeeds(f"test $(cat /sys/class/net/{iface}/mtu) = 1400")
+        spark2.wait_until_succeeds("test $(cat /sys/class/net/enp9s0/mtu) = 1400")
+
+    with subtest("a port that appears after boot gets the MTU too"):
+        index = spark2.succeed("cat /sys/class/net/enp9s0/ifindex").strip()
+        dev = spark2.succeed("basename $(readlink -f /sys/class/net/enp9s0/device)").strip()
+        spark2.succeed(f"echo {dev} > /sys/bus/virtio/drivers/virtio_net/unbind")
+        spark2.wait_until_fails("test -e /sys/class/net/enp9s0")
+        spark2.succeed(f"echo {dev} > /sys/bus/virtio/drivers/virtio_net/bind")
+        spark2.wait_until_succeeds("test $(cat /sys/class/net/enp9s0/mtu) = 1400")
+        assert spark2.succeed("cat /sys/class/net/enp9s0/ifindex").strip() != index
 
     with subtest("the snapshot gives the agent dmesg, the units and the containers"):
         spark1.succeed("podman load -i ${pluginCheck}")

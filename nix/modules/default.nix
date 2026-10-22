@@ -6,6 +6,7 @@ let
   # Units refer to single overlay files, so only those files are copied to the store. A copy of
   # the whole checkout would carry .git too, and any edit or fetch would restart the units.
   mtuScript = "${pkgs.bash}/bin/sh ${../../overlay/usr/local/sbin/sparkos-mtu}";
+  mtuEnabled = cfg.connectxMtu != 0 || cfg.ethernetMtu != 0;
   checkScript = "${pkgs.bash}/bin/bash ${../../overlay/usr/local/sbin/sparkos-mentatd-check}";
   memory = "${packages.sparkMemory}/bin/spark-memory";
   routeReady = pkgs.writeShellScript "kindling-mentat-route" ''
@@ -188,16 +189,25 @@ in
       };
     };
 
-    systemd.services.sparkos-mtu = lib.mkIf (cfg.connectxMtu != 0 || cfg.ethernetMtu != 0) {
-      description = "Apply Kindling GB10 port MTUs";
-      wantedBy = [ "multi-user.target" ];
+    # Each en* port gets its MTU when it appears, at boot and later: a ConnectX port without a
+    # cable is off the PCI bus until one is plugged in. On NetworkManager hosts the dispatcher
+    # below sets it again when a profile comes up, since a profile can carry its own MTU.
+    systemd.services."sparkos-mtu@" = lib.mkIf mtuEnabled {
+      description = "Apply the Kindling MTU to port %i";
       after = [ "network.target" ];
       path = with pkgs; [ coreutils iproute2 ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = mtuScript;
+        ExecStart = "${mtuScript} %i";
       };
     };
+    # NAME is the name udev gives the port. Without a rename rule it is unset, and KERNEL holds
+    # it. systemd ignores the add event of a port that udev renames, as a ConnectX port is
+    # renamed from eth<N>, and acts on the move event that follows, so match both.
+    services.udev.extraRules = lib.mkIf mtuEnabled ''
+      ACTION=="add|move", SUBSYSTEM=="net", NAME=="en*", ENV{SYSTEMD_WANTS}+="sparkos-mtu@$name.service"
+      ACTION=="add|move", SUBSYSTEM=="net", NAME=="", KERNEL=="en*", ENV{SYSTEMD_WANTS}+="sparkos-mtu@$name.service"
+    '';
 
     networking.networkmanager.dispatcherScripts = lib.mkIf config.networking.networkmanager.enable [
       {
@@ -207,7 +217,7 @@ in
               ${pkgs.systemd}/bin/systemctl start --no-block sparkos-mentatd-check.service ;;
           esac
           case "$2" in
-            up|reapply) ${lib.optionalString (cfg.connectxMtu != 0 || cfg.ethernetMtu != 0) ''exec ${mtuScript} "$1"''} ;;
+            up|reapply) ${lib.optionalString mtuEnabled ''exec ${mtuScript} "$1"''} ;;
           esac
         '';
         type = "basic";
