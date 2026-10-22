@@ -70,6 +70,13 @@
           inherit pkgs nixpkgs dispramStack;
           module = self.nixosModules.default;
         };
+        pins = import ./nix/checks/pins.nix {
+          inherit pkgs dispramStack;
+          # The aarch64 packages, as the GB10 runs them. The versions are the same on x86_64.
+          mentatVersion = self.packages.aarch64-linux.mentatd.version;
+          pySpyVersion = self.packages.aarch64-linux.pySpy.version;
+          pySpyAarch64Hash = self.packages.aarch64-linux.pySpy.src.outputHash;
+        };
         vendor = import ./nix/checks/vendor.nix { inherit pkgs; };
         vm = import ./nix/tests/vm.nix {
           inherit pkgs;
