@@ -1,0 +1,39 @@
+spark-nixos
+
+spark-nixos as a whole is licensed under the GNU Affero General Public License, version 3
+(LICENSE). It is derived from the projects below. Their files keep their own licences.
+
+kindling-spark-os
+  https://github.com/kindlingai/kindling-spark-os, AGPL-3.0 (vendor/kindling-spark-os/LICENSE)
+
+  vendor/kindling-spark-os/ is kindling-spark-os at the release that
+  vendor/kindling-spark-os.json records, with patches/kindling-spark-os/ applied.
+  In it, dispram/dispramd.py and dispram/rmlist.c are AGPL-3.0-or-later.
+  dispram/python/ and dispram/vllm/ are GPL-3.0-or-later with the exception in
+  dispram/BUNDLING-EXCEPTION (dispram/LICENSE-GPL).
+
+  nix/modules/kindling/, nix/packages.nix, nix/pkgs/dispram.nix, nix/pkgs/mentat-Cargo.lock
+  and nix/tests/vm.nix began as the NixOS port of kindling-spark-os's host services, on the
+  nixos-port branch of https://github.com/OnixResearch/kindling-spark-os. This repository
+  keeps that history. nix/pkgs/mentat-Cargo.lock is mentat's (MIT OR Apache-2.0).
+
+nixos-dgx-spark
+  https://github.com/graham33/nixos-dgx-spark at c646a19a5df3316c1b0e79e2025d59f8deb704de,
+  MIT (LICENSES/MIT-nixos-dgx-spark.txt)
+
+  Unchanged: kernel-configs/, scripts/generate-terse-dgx-config.py,
+  scripts/extract-baseline-config.nix, scripts/fetch-kernel-source.nix,
+  tests/test_generate_config.py, and nix/pkgs/dgx-spark-mlnx-hotplug.nix
+  (packages/dgx-spark-mlnx-hotplug/default.nix there).
+
+  Changed: nix/modules/hardware/default.nix (modules/dgx-spark.nix there),
+  nix/modules/hardware/connectx7.nix (modules/dgx-spark-connectx7.nix) and
+  nix/checks/hardware-eval.nix (checks/dgx-spark-eval.nix).
+
+straylight-software/nixos-dgx-spark
+  https://github.com/straylight-software/nixos-dgx-spark, MIT. A fork of graham33's. No files
+  come from it. The services module and its VM test support its nixpkgs.
+
+Not in this repository
+  A built system fetches NVIDIA's driver and its dgx-spark-mlnx-hotplug package. Both are
+  unfree, so never publish a built system or push one to a public cache.
