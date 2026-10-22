@@ -1,11 +1,19 @@
 # OGKM must be a caller-pinned NVIDIA/open-gpu-kernel-modules source tree at the
 # exact release declared by services.kindling.dispram.ogkmVersion.
-{ stdenv, ogkmSource }:
+{ lib, stdenv, ogkmSource }:
 
 stdenv.mkDerivation {
   pname = "dispram";
   version = "0.1";
-  src = ../../dispram;
+  # Only what is built and installed, so an edit elsewhere in dispram/ leaves dispramd alone.
+  src = lib.fileset.toSource {
+    root = ../../dispram;
+    fileset = lib.fileset.unions [
+      ../../dispram/rmlist.c
+      ../../dispram/dispramd.py
+      ../../dispram/LICENSE
+    ];
+  };
 
   dontConfigure = true;
 
