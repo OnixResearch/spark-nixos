@@ -19,6 +19,12 @@ let
     pname = "mentatd";
     version = mentatVersion;
     src = "${mentatSource}/python";
+    # mentat's repository commits an old setuptools build/ tree, which upstream's .dockerignore
+    # keeps out of its wheel. Every file in the store has the same mtime, so setuptools would
+    # take those old modules as current and install them.
+    postPatch = ''
+      rm -rf build mentatd.egg-info
+    '';
     pyproject = true;
     build-system = [ pkgs.python3Packages.setuptools ];
     pythonImportsCheck = [ "ray.register" ];
