@@ -57,7 +57,8 @@ They are this repository's now, and kernel and driver bumps are its job. Keep gr
 names (`hardware.dgx-spark.*`), so a host can move between the two modules. When copying more
 from graham33 or straylight-software, record the source revision and the files in NOTICE, and
 keep the MIT notice. The hardware module leaves out graham33's dashboard, fan control, vLLM
-module, `cudaSupport` and Flox cache, because a Kindling node runs its models in containers.
+module, `cudaSupport` and Flox cache, because a Kindling node runs its models in containers,
+and `/run/docker.sock`, which nothing here uses.
 
 A kernel bump: change `kernel-configs/nvidia-kernel-source.nix`, then from the checkout's root
 run `nix run .#generate-kernel-config` and `nix run .#generate-kernel-config -- --flavour

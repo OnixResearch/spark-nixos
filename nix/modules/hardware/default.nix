@@ -308,10 +308,12 @@ in
     # cudaCapabilities = [ "12.0" "12.1" ].
     nixpkgs.config.allowUnfree = true;
 
+    # `docker` runs Podman, so recipes written for kindling-spark-os's Docker still run. Unlike
+    # graham33's module there is no /run/docker.sock: nothing here talks to a Docker API. A host
+    # whose tools want one sets dockerSocket.enable.
     virtualisation.podman = {
       enable = true;
       dockerCompat = true;
-      dockerSocket.enable = true;
       defaultNetwork.settings.dns_enabled = true;
     };
 

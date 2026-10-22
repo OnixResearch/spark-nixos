@@ -100,10 +100,11 @@ Put the cluster key outside the Nix store, in `/etc/spark/mentat.key` (mode 0400
 needs the same key. mentatd does not start without `/etc/spark/node.env`. An optional
 `/etc/spark/agent.env` takes `MENTAT_ROUTER_URL` and `ALLOWED_SOURCES`.
 
-The snapshot and the status screen list containers with the host's own runtime: Podman's CLI,
-which reads root's container storage itself, without Podman's API service, or Docker's on a
-host that runs Docker instead. Neither needs Docker's client. The hardware module runs Podman.
-Run one of the two, not both.
+Nothing here needs Docker. The hardware module runs Podman, with `docker` as an alias for it,
+so recipes written for kindling-spark-os's Docker still run, but it serves no
+`/run/docker.sock`. The snapshot and the status screen list containers with the host's own
+runtime: Podman's CLI, which reads root's container storage itself, without Podman's API
+service, or Docker's on a host that runs Docker instead. Run one of the two, not both.
 
 mentatd finds its peers by broadcast, and it announces only on interfaces that have a broadcast
 address. NixOS's scripted networking adds static addresses
