@@ -373,7 +373,7 @@ in
     # drop replies that a multi-port fabric routes back through another port.
     networking.firewall.checkReversePath = lib.mkDefault "loose";
 
-    # DGX OS runs Avahi with nss-mdns: a box answers for its own name, as in spark-6d1b.local, and
+    # DGX OS runs Avahi with nss-mdns: a box answers for its own name, as in spark-XXXX.local, and
     # resolves other .local names. dgx-oobe advertises SSH, and 7.6's nvidia-spark-avahi-conf
     # keeps Avahi off Docker's bridge.
     services.avahi = {

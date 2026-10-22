@@ -91,8 +91,8 @@ since removed. A host on it needs a nixpkgs from before then, such as
 `github:NixOS/nixpkgs/45d3c39fc013ef15db3cf308a21fbd4b2d69a73d`. It does not enable fwupd.
 
 The hardware module runs Avahi as DGX OS does, so the box answers to
-`<networking.hostName>.local`. Set the host name to the box's DGX OS name, such as `spark-6d1b`,
-and `ssh spark-6d1b.local` still reaches it after the switch.
+`<networking.hostName>.local`. Set the host name to the box's DGX OS name, as in `spark-XXXX`,
+and `ssh spark-XXXX.local` still reaches it after the switch.
 
 Build the new generation with `sudo nixos-rebuild build --flake .#spark`, and after review
 `sudo nixos-rebuild boot --flake .#spark`. Rolling back uses the boot menu's earlier
