@@ -159,7 +159,7 @@ in
     systemd.services.spark-dmesg-snapshot = {
       description = "Snapshot host-only diagnostics for the Kindling agent";
       path = with pkgs; [
-        coreutils gnugrep gnused gawk procps systemd util-linux docker rdma-core iproute2 packages.sparkMemory
+        coreutils gnugrep gnused gawk procps systemd util-linux docker-client rdma-core iproute2 packages.sparkMemory
       ] ++ nvidiaBin;
       environment = { SPARK_MEMORY_PY = memory; } // containerEnv;
       serviceConfig = {
@@ -237,7 +237,7 @@ in
       restartIfChanged = false;
       # procps before coreutils: the status screen runs uptime -p, which coreutils' uptime lacks.
       path = with pkgs; [
-        procps coreutils iproute2 curl jq gnused gawk gnugrep util-linux ncurses docker hostname getent logo
+        procps coreutils iproute2 curl jq gnused gawk gnugrep util-linux ncurses docker-client hostname getent logo
       ] ++ nvidiaBin;
       environment = {
         TERM = "linux";
