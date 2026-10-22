@@ -96,6 +96,12 @@ alters what gets built at all.
   `uptime` has no `-p`, so procps comes before coreutils on the status screen's path.
   Evaluation does not catch a missing command. The VM test does for mentatd, the snapshot and
   the status screen. When upstream adds a command to a script, add its package to the unit.
+- The snapshot and the status screen call `docker`. The services module puts the host's own
+  runtime on their PATH under that name: Podman's CLI, or Docker's on a Docker host. Never
+  `docker-client`: it added 166 MiB to every host, and on Podman it went through Podman's API
+  service, which `DOCKER_HOST` had to point at. Podman's `ps` and `logs` take the scripts'
+  arguments and `--format` templates unchanged. The VM test stops `podman.socket` and
+  `podman.service` before the snapshot, so a path back to an API fails it.
 - Units refer to vendored files one at a time
   (`${../../../vendor/kindling-spark-os/overlay/usr/local/bin/spark-console}`), never to a
   directory. A directory's store path changes with any file in it, and every unit using it would

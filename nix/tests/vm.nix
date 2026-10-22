@@ -42,12 +42,9 @@ let
       ethernetMtu = 1400;
     };
 
-    # As both hardware modules do. graham33's also links /run/docker.sock, which the module no
-    # longer needs: the snapshot and the status screen reach Podman on its own socket.
-    virtualisation.podman = {
-      enable = true;
-      dockerCompat = true;
-    };
+    # Podman, as every hardware module runs, but without its docker alias: the services find
+    # Podman's CLI themselves.
+    virtualisation.podman.enable = true;
 
     environment.etc."spark/mentat.key" = { text = "kindling-vm-test-key"; mode = "0400"; };
     # Every VM's QEMU user network (eth0) has 10.0.2.15, as every Podman host's podman0 has
@@ -206,12 +203,15 @@ pkgs.testers.runNixOSTest {
         spark1.succeed("podman load -i ${pluginCheck}")
         spark1.succeed(
             "podman run -d --name model --network host plugin-check "
-            "python3 -c 'import time; time.sleep(1e6)'"
+            "python3 -c 'import time; print(\"model ready\", flush=True); time.sleep(1e6)'"
         )
+        # The containers come from Podman's CLI, not from an API: stop the service behind it.
+        spark1.succeed("systemctl stop podman.socket podman.service")
         spark1.succeed("systemctl start spark-dmesg-snapshot")
         spark1.succeed("test -s /var/log/spark/dmesg.log")
         spark1.succeed("grep -q mentatd.service /var/log/spark/systemd-units.log")
         spark1.succeed("grep -q model /var/log/spark/docker-ps.log")
+        spark1.succeed("grep -q 'model ready' /var/log/spark/docker-model.log")
         assert "model" in tool(spark1, 8090, "docker_ps", {})
 
     with subtest("the status screen on tty1 shows the box, its peer and its containers"):

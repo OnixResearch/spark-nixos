@@ -18,13 +18,22 @@ let
   # NixOS installs nvidia-smi in the driver's bin output, which /run/opengl-driver leaves out.
   # A unit's PATH has only its path packages and a few defaults, so each unit that runs it lists this.
   nvidiaBin = lib.optional config.hardware.nvidia.enabled config.hardware.nvidia.package.bin;
-  # The snapshot and the status screen run the Docker CLI. A host that runs Podman and not
-  # Docker serves the Docker API on Podman's socket, which NixOS's Podman module always enables.
-  # /run/docker.sock exists only with virtualisation.podman.dockerSocket.enable, which the
-  # straylight-software hardware module leaves off.
-  containerEnv = lib.optionalAttrs
-    (config.virtualisation.podman.enable && !config.virtualisation.docker.enable)
-    { DOCKER_HOST = "unix:///run/podman/podman.sock"; };
+  # The snapshot and the status screen call `docker ps` and `docker logs`. They get the host's
+  # own runtime under that name: Docker's CLI on a Docker host, and on a Podman host Podman's,
+  # which takes the same commands and reads root's container storage itself. So neither needs
+  # Docker's client, nor an API socket and the service behind it.
+  containerCli =
+    if config.virtualisation.docker.enable then
+      [ config.virtualisation.docker.package ]
+    else if config.virtualisation.podman.enable then
+      [
+        (pkgs.runCommand "podman-as-docker" { } ''
+          mkdir -p "$out/bin"
+          ln -s ${lib.getExe config.virtualisation.podman.package} "$out/bin/docker"
+        '')
+      ]
+    else
+      [ ];
 in
 {
   imports = [ ./dispram.nix ];
@@ -163,9 +172,9 @@ in
     systemd.services.spark-dmesg-snapshot = {
       description = "Snapshot host-only diagnostics for the Kindling agent";
       path = with pkgs; [
-        coreutils gnugrep gnused gawk procps systemd util-linux docker-client iproute2 packages.sparkMemory
-      ] ++ nvidiaBin;
-      environment = { SPARK_MEMORY_PY = memory; } // containerEnv;
+        coreutils gnugrep gnused gawk procps systemd util-linux iproute2 packages.sparkMemory
+      ] ++ containerCli ++ nvidiaBin;
+      environment.SPARK_MEMORY_PY = memory;
       serviceConfig = {
         Type = "oneshot";
         Nice = 10;
@@ -240,13 +249,13 @@ in
       restartIfChanged = false;
       # procps before coreutils: the status screen runs uptime -p, which coreutils' uptime lacks.
       path = with pkgs; [
-        procps coreutils iproute2 curl jq gnused gawk gnugrep util-linux ncurses docker-client hostname getent logo
-      ] ++ nvidiaBin;
+        procps coreutils iproute2 curl jq gnused gawk gnugrep util-linux ncurses hostname getent logo
+      ] ++ containerCli ++ nvidiaBin;
       environment = {
         TERM = "linux";
         SPARK_LOGIN = "${pkgs.shadow}/bin/login";
         SPARK_LOGO_DIR = "${../../../vendor/kindling-spark-os/overlay/usr/share/kindling}";
-      } // containerEnv;
+      };
       serviceConfig = {
         ExecStart = "${pkgs.bash}/bin/bash ${../../../vendor/kindling-spark-os/overlay/usr/local/bin/spark-console}";
         StandardInput = "tty";

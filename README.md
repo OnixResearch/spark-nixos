@@ -100,9 +100,10 @@ Put the cluster key outside the Nix store, in `/etc/spark/mentat.key` (mode 0400
 needs the same key. mentatd does not start without `/etc/spark/node.env`. An optional
 `/etc/spark/agent.env` takes `MENTAT_ROUTER_URL` and `ALLOWED_SOURCES`.
 
-The snapshot and the status screen list containers with the Docker CLI: on Docker's socket, or
-on Podman's (`/run/podman/podman.sock`) when the host runs Podman and not Docker. The hardware
-module runs Podman. Run one of the two, not both.
+The snapshot and the status screen list containers with the host's own runtime: Podman's CLI,
+which reads root's container storage itself, without Podman's API service, or Docker's on a
+host that runs Docker instead. Neither needs Docker's client. The hardware module runs Podman.
+Run one of the two, not both.
 
 mentatd finds its peers by broadcast, and it announces only on interfaces that have a broadcast
 address. NixOS's scripted networking adds static addresses
@@ -257,7 +258,7 @@ cabinets, staged each capsule byte for byte and set `OsIndications`.
 
 | Check | What it does |
 |---|---|
-| `vm` | Boots two NixOS VMs joined by a LAN and a fabric, with the firewall above. Checks that the daemons name themselves and mesh, that a router on one VM runs the other's agent tools, that the fabric passes what the LAN blocks, that ports get their MTU at boot and when they appear later, and that the snapshot, the status screen, the dispram mounts under Podman, the watchdog and a switch work. |
+| `vm` | Boots two NixOS VMs joined by a LAN and a fabric, with the firewall above. Checks that the daemons name themselves and mesh, that a router on one VM runs the other's agent tools, that the fabric passes what the LAN blocks, that ports get their MTU at boot and when they appear later, that the snapshot lists the containers with Podman's API service stopped, and that the status screen, the dispram mounts under Podman, the watchdog and a switch work. |
 | `hardware-eval` | Evaluates a whole GB10 host for both kernels without building it. |
 | `vendor` | Rebuilds `vendor/kindling-spark-os` from its recorded release and patches, and fails on any difference. |
 | `pins` | Compares mentat, py-spy and dispram's OGKM pin with the vendored release's Dockerfile and default stack. |
