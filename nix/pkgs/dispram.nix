@@ -41,5 +41,9 @@ stdenv.mkDerivation {
     runHook postInstall
   '';
 
-  meta.platforms = [ "aarch64-linux" ];
+  meta = {
+    description = "GB10 display-carveout lender (dispram) and its RM helper library";
+    license = lib.licenses.agpl3Plus;
+    platforms = [ "aarch64-linux" ];
+  };
 }

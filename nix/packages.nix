@@ -28,6 +28,11 @@ let
     pyproject = true;
     build-system = [ pkgs.python3Packages.setuptools ];
     pythonImportsCheck = [ "ray.register" ];
+    meta = {
+      description = "mentat's Ray-compatible Python client";
+      homepage = "https://github.com/kindlingai/mentat";
+      license = with lib.licenses; [ mit asl20 ];
+    };
   };
 
   # py-spy from the wheel the Dockerfile pins (PY_SPY_VERSION, PY_SPY_SHA256), so a NixOS box
@@ -103,6 +108,11 @@ let
         --add-flags "$out/libexec/spark-memory.py"
       runHook postInstall
     '';
+    meta = {
+      description = "Kindling's host memory accounting, GPU allocations included";
+      license = lib.licenses.agpl3Only;
+      mainProgram = "spark-memory";
+    };
   };
 in
 {
@@ -150,7 +160,11 @@ in
         --set-default SPARK_MEMORY_PY "${memory}/bin/spark-memory"
       runHook postInstall
     '';
-    meta.mainProgram = "spark-agent";
+    meta = {
+      description = "Kindling's host status page and MCP tools";
+      license = lib.licenses.agpl3Only;
+      mainProgram = "spark-agent";
+    };
   };
 
   sparkMemory = memory;
