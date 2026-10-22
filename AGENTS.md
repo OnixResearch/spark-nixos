@@ -21,7 +21,7 @@ from where.
 |`nix/modules/kindling/`|The services module and dispram's options.|
 |`nix/modules/hardware/`|The GB10 module and CX7 hot-plug, from graham33's `modules/`.|
 |`nix/packages.nix`|mentatd and the ray shim from mentat's source, the agent, spark-memory, py-spy from its wheel.|
-|`nix/pkgs/`|dispram, the CX7 hot-plug helper, mentat's `Cargo.lock`.|
+|`nix/pkgs/`|mentat's pin (`mentat-source.nix`) and `Cargo.lock`, its Python client, dispram, the CX7 hot-plug helper.|
 |`nix/tests/vm.nix`|The two-VM cluster test.|
 |`nix/checks/`|`hardware-eval`, `vendor` and `pins`.|
 |`vendor/kindling-spark-os/`|kindling-spark-os files at one release, patched. Never edit by hand.|
@@ -42,7 +42,7 @@ record and fails on any difference, so:
 - To take a new release, run `nix run .#import-kindling -- vX.Y.Z`. A patch that no longer
   applies stops it: update the patch, or drop it if upstream took the change. Then run
   `nix flake check`. `checks.<system>.pins` names every pin that has to follow: mentat's commit
-  and hash in `nix/packages.nix` with the release's `rust/Cargo.lock` copied to
+  and hash in `nix/pkgs/mentat-source.nix` with the release's `rust/Cargo.lock` copied to
   `nix/pkgs/mentat-Cargo.lock`, py-spy's wheel hashes, and `dispramStack` in `flake.nix`.
 - A file the modules need that is not vendored yet goes into the `files` list in
   `scripts/import-kindling.sh`, then import again.

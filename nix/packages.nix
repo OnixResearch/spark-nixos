@@ -3,37 +3,8 @@
 let
   inherit (pkgs) lib;
 
-  # The release in the Dockerfile's mentat images. Its tag is annotated, so the commit it
-  # points at is pinned, not the tag, which can move.
-  mentatVersion = "0.21.0";
-  mentatSource = pkgs.fetchFromGitHub {
-    owner = "kindlingai";
-    repo = "mentat";
-    rev = "950cabaf6b016beb71d2a5a0437df4f172576814";
-    hash = "sha256-/bB/ZzhN7AdmRMd44pYJKNuWecwkZ4ESRDUkZSpGmv4=";
-  };
-
-  # The upstream package is a small Ray-compatible shim named "mentatd", not
-  # real Ray. In particular spark-agent uses ray.register.connect().
-  rayShim = pkgs.python3Packages.buildPythonPackage {
-    pname = "mentatd";
-    version = mentatVersion;
-    src = "${mentatSource}/python";
-    # mentat's repository commits an old setuptools build/ tree, which upstream's .dockerignore
-    # keeps out of its wheel. Every file in the store has the same mtime, so setuptools would
-    # take those old modules as current and install them.
-    postPatch = ''
-      rm -rf build mentatd.egg-info
-    '';
-    pyproject = true;
-    build-system = [ pkgs.python3Packages.setuptools ];
-    pythonImportsCheck = [ "ray.register" ];
-    meta = {
-      description = "mentat's Ray-compatible Python client";
-      homepage = "https://github.com/kindlingai/mentat";
-      license = with lib.licenses; [ mit asl20 ];
-    };
-  };
+  mentat = pkgs.callPackage ./pkgs/mentat-source.nix { };
+  rayShim = pkgs.python3Packages.callPackage ./pkgs/ray-shim.nix { inherit mentat; };
 
   # py-spy from the wheel the Dockerfile pins (PY_SPY_VERSION, PY_SPY_SHA256), so a NixOS box
   # runs the Ubuntu image's binary whatever the host's nixpkgs is. The nixpkgs that the
@@ -117,8 +88,7 @@ in
 {
   mentatd = pkgs.rustPlatform.buildRustPackage {
     pname = "mentatd";
-    version = mentatVersion;
-    src = mentatSource;
+    inherit (mentat) version src;
     cargoRoot = "rust";
     # Copied verbatim from the pinned commit; the Rust builder checks it
     # against rust/Cargo.lock in src without fetching src during evaluation.
@@ -136,7 +106,7 @@ in
       ln -s mentatd "$out/bin/ray"
     '';
     meta = {
-      description = "Mentat ${mentatVersion} cluster daemon and host machine probe";
+      description = "Mentat ${mentat.version} cluster daemon and host machine probe";
       homepage = "https://github.com/kindlingai/mentat";
       license = with lib.licenses; [ mit asl20 ];
       mainProgram = "mentatd";
@@ -167,5 +137,5 @@ in
   };
 
   sparkMemory = memory;
-  inherit pySpy;
+  inherit pySpy rayShim;
 }
