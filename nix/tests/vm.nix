@@ -81,6 +81,13 @@ pkgs.testers.runNixOSTest {
         Restart = "on-failure";
       };
     };
+
+    # The same system with changed mentatd and console units, as a nixpkgs or mentat bump
+    # changes them, for the switch subtest.
+    specialisation.changed.configuration = {
+      systemd.services.mentatd.environment.KINDLING_TEST_GENERATION = "2";
+      systemd.services.spark-console.environment.KINDLING_TEST_GENERATION = "2";
+    };
   };
   nodes.spark2 = box;
 
@@ -199,5 +206,16 @@ pkgs.testers.runNixOSTest {
             "-e PYTHONPATH=/opt/dispram plugin-check python3 /check.py"
         )
         assert out.strip() == "['dispram_vllm:register'] False 0", out
+
+    with subtest("a switch leaves mentatd and the status screen running"):
+        units = ("mentatd", "spark-console")
+        pids = {u: spark1.succeed(f"systemctl show -p MainPID --value {u}").strip() for u in units}
+        print(spark1.succeed(
+            "/run/current-system/specialisation/changed/bin/switch-to-configuration test 2>&1"
+        ))
+        for u in units:
+            spark1.succeed(f"systemctl cat {u} | grep -q KINDLING_TEST_GENERATION")
+            pid = spark1.succeed(f"systemctl show -p MainPID --value {u}").strip()
+            assert pid == pids[u], (u, pids[u], pid)
   '';
 }

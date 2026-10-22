@@ -110,6 +110,9 @@ in
         ConditionPathExists = cfg.nodeEnvironmentFile;
         StartLimitIntervalSec = 0;
       };
+      # A switch must not restart mentatd: on the box that heads a model group, that kills the
+      # group. A new mentatd takes over at the next boot or a deliberate restart.
+      restartIfChanged = false;
       # mentatd announces the name hostname(1) prints, and "unknown" when there is none.
       path = [ pkgs.iproute2 pkgs.hostname ];
       serviceConfig = {
@@ -217,6 +220,8 @@ in
       after = [ "systemd-user-sessions.service" "mentatd.service" ];
       conflicts = [ "getty@tty1.service" ];
       before = [ "getty.target" ];
+      # As NixOS's own gettys: a restart would hang up whoever logged in on tty1.
+      restartIfChanged = false;
       # procps before coreutils: the status screen runs uptime -p, which coreutils' uptime lacks.
       path = with pkgs; [
         procps coreutils iproute2 curl jq gnused gawk gnugrep util-linux ncurses docker hostname getent logo
