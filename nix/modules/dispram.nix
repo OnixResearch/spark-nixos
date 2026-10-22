@@ -65,7 +65,8 @@ in
     };
   };
 
-  config = {
+  # dispram is part of Kindling: with Kindling off, neither the daemon nor its paths exist.
+  config = mkIf config.services.kindling.enable {
     assertions = lib.optionals cfg.enable [
       {
         assertion = builtins.match "[0-9]+([.][0-9]+)+" cfg.validatedDriver != null;
@@ -85,7 +86,7 @@ in
     # dispram/README.md). Both exist whenever Kindling runs, dispramd or not, because Podman
     # refuses to start a container whose bind source is missing. Without dispramd the plugin
     # stands aside.
-    systemd.tmpfiles.rules = mkIf config.services.kindling.enable [
+    systemd.tmpfiles.rules = [
       "d /run/dispram 0755 root root -"
       "L+ /opt/kindling/dispram - - - - ${plugin}"
     ];
