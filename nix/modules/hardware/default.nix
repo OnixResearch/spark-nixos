@@ -3,6 +3,7 @@
 # host imports this module or graham33's, not both.
 { config
 , lib
+, options
 , pkgs
 , ...
 }:
@@ -371,6 +372,30 @@ in
     # DGX OS checks the reverse path loosely (rp_filter 2). The firewall's strict check would
     # drop replies that a multi-port fabric routes back through another port.
     networking.firewall.checkReversePath = lib.mkDefault "loose";
+
+    # DGX OS runs Avahi with nss-mdns: a box answers for its own name, as in spark-6d1b.local, and
+    # resolves other .local names. dgx-oobe advertises SSH, and 7.6's nvidia-spark-avahi-conf
+    # keeps Avahi off Docker's bridge.
+    services.avahi = {
+      enable = lib.mkDefault true;
+      nssmdns4 = lib.mkDefault true;
+      extraServiceFiles = lib.mkIf config.services.openssh.enable {
+        ssh = lib.mkDefault "${pkgs.avahi}/etc/avahi/services/ssh.service";
+      };
+    }
+    # Newer nixpkgs takes Avahi's daemon options under `settings`, and an older one as separate
+    # options. A definition of an option that does not exist fails even when the module is off.
+    // (if options.services.avahi ? settings then {
+      settings.publish = {
+        disable-publishing = lib.mkDefault false;
+        publish-addresses = lib.mkDefault true;
+      };
+      settings.server.deny-interfaces = lib.mkDefault [ "docker0" ];
+    } else {
+      publish.enable = lib.mkDefault true;
+      publish.addresses = lib.mkDefault true;
+      denyInterfaces = lib.mkDefault [ "docker0" ];
+    });
 
     # nvidia-no-systemd-suspend: a cluster node never suspends.
     systemd.targets.suspend.enable = false;

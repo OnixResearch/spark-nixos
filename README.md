@@ -4,8 +4,8 @@ NixOS for NVIDIA GB10 hosts (DGX Spark, ASUS Ascent GX10) that run Kindling's cl
 It has two NixOS modules:
 
 - `nixosModules.hardware`: the GB10 itself. NVIDIA's 7.0 kernel in 4 KiB and 64 KiB page builds,
-  the NVIDIA driver, DGX OS's boot parameters and tuning, RoCE, firmware updates through fwupd,
-  and ConnectX-7 hot-plug. No container runtime.
+  the NVIDIA driver, DGX OS's boot parameters and tuning, RoCE, mDNS names, firmware updates
+  through fwupd, and ConnectX-7 hot-plug. No container runtime.
 - `nixosModules.kindling`: Kindling's host services. mentatd, the spark agent and its
   diagnostics, port MTUs, models in NixOS containers, and optionally the tty1 status screen,
   the hardware watchdog and dispram.
@@ -89,6 +89,10 @@ hardware modules: they declare the same options. straylight-software's `main` ha
 kernel and the 580.95.05 driver, and builds the kernel from `pkgs.linux_6_17`, which nixpkgs has
 since removed. A host on it needs a nixpkgs from before then, such as
 `github:NixOS/nixpkgs/45d3c39fc013ef15db3cf308a21fbd4b2d69a73d`. It does not enable fwupd.
+
+The hardware module runs Avahi as DGX OS does, so the box answers to
+`<networking.hostName>.local`. Set the host name to the box's DGX OS name, such as `spark-6d1b`,
+and `ssh spark-6d1b.local` still reaches it after the switch.
 
 Build the new generation with `sudo nixos-rebuild build --flake .#spark`, and after review
 `sudo nixos-rebuild boot --flake .#spark`. Rolling back uses the boot menu's earlier
@@ -211,8 +215,8 @@ the NVIDIA container toolkit.
 ## What it takes from DGX OS
 
 DGX OS tunes the Spark through small NVIDIA packages, one setting each. kindling-spark-os's
-image installs the same ones. The hardware module carries them, as read from three Sparks on DGX
-OS 7.5 and 7.6:
+image installs the same ones, but runs no Avahi. The hardware module carries them, as read from
+three Sparks on DGX OS 7.5 and 7.6:
 
 | DGX OS | spark-nixos |
 |---|---|
@@ -229,10 +233,11 @@ OS 7.5 and 7.6:
 | rdma-core's udev rules | `ib_uverbs`, `rdma_ucm` and `ib_umad` load at boot, and RDMA devices get DGX OS's names, such as `rocep1s0f0` |
 | `dgx-spark-mlnx-hotplug` | ConnectX-7 hot-plug |
 | `nvidia-mstflint-loader` | `mstflint` and `nvme-cli`, without the mstflint kernel module |
+| Ubuntu's Avahi and nss-mdns, `dgx-oobe`'s SSH service, 7.6's `nvidia-spark-avahi-conf` | Avahi answers for `<hostname>.local`, resolves other `.local` names, advertises SSH, and stays off `docker0` |
 
 It leaves out what a cluster node does not need, or what belongs to the site: the DGX
 dashboard, Docker and the container toolkit, NVIDIA's telemetry and OTA updates, rasdaemon,
-smartd, lldpd, Avahi's `spark-XXXX.local` names, and the ConnectX-7 firmware manager.
+smartd, lldpd, and the ConnectX-7 firmware manager.
 `scripts/dgx-os-tuning.sh` prints a DGX OS box's tuning without changing anything, to compare
 after a DGX OS update: `ssh <box> bash -s < scripts/dgx-os-tuning.sh`.
 

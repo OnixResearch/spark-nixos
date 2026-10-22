@@ -72,7 +72,8 @@ are `tty0` and the UART, not `tty1`, where Kindling's status screen runs.
 The hardware module carries the tuning that DGX OS's NVIDIA packages install, one setting each,
 as read from three Sparks on DGX OS 7.5 and 7.6. README's "What it takes from DGX OS" lists them.
 kindling-spark-os's `setup/packages.txt` installs the same packages, and its
-`setup/customize.sh` writes the same kernel line, so the two agree.
+`setup/customize.sh` writes the same kernel line, so the two agree. The exception is Avahi:
+kindling-spark-os's image runs none.
 
 - `scripts/dgx-os-tuning.sh` prints a box's tuning and changes nothing:
   `ssh <box> bash -s < scripts/dgx-os-tuning.sh`. After a DGX OS update, run it and compare. A
@@ -95,6 +96,10 @@ kindling-spark-os's `setup/packages.txt` installs the same packages, and its
   name. No box has confirmed it yet.
 - NixOS runs `nvidia-persistenced --verbose`, and DGX OS runs it with `--persistence-mode`. The
   daemon turns persistence mode on by default, so the two agree.
+- nixpkgs moved Avahi's daemon options under `services.avahi.settings`. straylight's nixpkgs has
+  only the old options, and a definition of an option that does not exist fails even inside a
+  `mkIf` that is off. So the hardware module checks `options.services.avahi ? settings` and sets
+  one form or the other.
 - The boxes had no passwordless sudo, so nothing that needs root was read. That covers netplan's
   `40-cx7.yaml` (the fabric's addresses, which belong to the site anyway).
 
