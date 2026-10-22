@@ -232,6 +232,11 @@ let
       systemd.services.engine = {
         description = "Kindling model ${name}";
         wantedBy = [ "multi-user.target" ];
+        # nvidia-smi, as NVIDIA's container toolkit gives a GPU container. A distributed model's
+        # `ray start` is mentatd, whose machine probe counts GPUs with it, and an agent that
+        # registers none cannot host a rank.
+        path = lib.optional (m.gpu && hostConfig.hardware.nvidia.enabled)
+          hostConfig.hardware.nvidia.package.bin;
         environment =
           {
             MENTAT_GROUP = m.group;

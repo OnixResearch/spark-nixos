@@ -168,8 +168,8 @@ answers on 127.0.0.1:6379; `MENTAT_GROUP`, `MENTAT_OPENAI_API` and `MENTAT_MODEL
 `python -m ray.register` for one rank, or `ray start` (mentatd's agent) with
 `VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1` and `MENTAT_PYTHON` for a distributed engine, whose other
 ranks the agent starts with that Python. What the recipes' compose files give their containers,
-the module gives too: GPU nodes and `/run/opengl-driver`, `/dev/infiniband`, unlimited memlock,
-a 64 MiB stack and no core dumps.
+the module gives too: GPU nodes and `/run/opengl-driver`, nvidia-smi, `/dev/infiniband`,
+unlimited memlock, a 64 MiB stack and no core dumps.
 
 - The container shares the host's network namespace, so its own firewall stays off. It would only
   fail without CAP_NET_ADMIN.
@@ -181,6 +181,12 @@ a 64 MiB stack and no core dumps.
   from udev as the modules load, so `kindling-gpu-nodes.service` makes them again, in order,
   before any model. `/dev/infiniband` is made at boot, since a ConnectX port's RDMA devices
   appear only once its cable is in.
+- mentatd's machine probe counts GPUs with `nvidia-smi`, and an agent that registers none cannot
+  host a rank. A distributed model's `ray start` is mentatd, so the engine's unit puts the
+  driver's `bin` on its PATH.
+- NVIDIA's container toolkit also passes the DRM and modeset nodes and nvidia-persistenced's
+  socket. Models go without them. CUDA does not open the nodes, and the socket takes requests to
+  change persistence mode and NUMA status, which are the host's to make.
 - The model's container units keep `restartIfChanged = false`, as mentatd does.
 - `services.kindling.vllm` evaluates on this nixpkgs only with graham33's CUDA fixes. No public
   cache holds it, so check `nix path-info --store https://cache.flox.dev <outPath>` and
