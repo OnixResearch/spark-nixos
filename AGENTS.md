@@ -89,11 +89,12 @@ kindling-spark-os's image runs none.
   drivers, a USB gadget function, `DM_INIT`, `EFI_COCO_SECRET`, the ladder idle governor, and
   `UEVENT_HELPER`, which graham33 turns off on purpose. Both kernels default to IOMMU
   passthrough and to zeroing memory on allocation. Both kernel lines turn those off.
-- Port names match. systemd 261 reads a PCI slot from `firmware_node/sun` first (naming scheme
-  v257), then from `/sys/bus/pci/slots`. No Spark port or root port has a `sun`, and slot 7's
-  address is the LAN port's own, so the port stays `enP7s7`, as under DGX OS's systemd 255. The
-  ConnectX-7 ports sit in no slot and keep their path names. Schemes v258 to v261 change no PCI
-  name. No box has confirmed it yet.
+- Port names match. NixOS's systemd (262 at this lock, 258 in straylight's nixpkgs) reads a PCI
+  slot from `firmware_node/sun` first (naming scheme v257), then from `/sys/bus/pci/slots`. No
+  Spark port or root port has a `sun`, and slot 7's address is the LAN port's own, so the port
+  stays `enP7s7`, as under DGX OS's systemd 255. The ConnectX-7 ports sit in no slot and keep
+  their path names. Schemes v258 to v261, the newest, change no PCI name. No box has confirmed
+  it yet.
 - NixOS runs `nvidia-persistenced --verbose`, and DGX OS runs it with `--persistence-mode`. The
   daemon turns persistence mode on by default, so the two agree.
 - nixpkgs moved Avahi's daemon options under `services.avahi.settings`. straylight's nixpkgs has
