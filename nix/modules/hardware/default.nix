@@ -282,6 +282,8 @@ in
 
     boot.blacklistedKernelModules = [
       "nouveau"
+      # nvidia-spark-realtek-mod-options aliases the LAN port's RTL8127 to Realtek's r8127. This
+      # kernel's r8169 does not claim it, and the blacklist keeps it that way.
       "r8169"
       "coresight_etm4x"
     ];

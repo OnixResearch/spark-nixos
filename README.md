@@ -231,6 +231,7 @@ three Sparks on DGX OS 7.5 and 7.6:
 | `nvidia-spark-limits`, `nv-limits` | unlimited memlock, and 500000 open files, for logins |
 | `nvidia-no-systemd-suspend` | the suspend targets are masked |
 | `nvidia-nvme-options` | NVMe interrupt coalescing at boot |
+| `nvidia-spark-realtek-mod-options` | `r8169` is blacklisted, so the LAN port's RTL8127 binds Realtek's `r8127` |
 | a 16 GiB `/swap.img` | a 16 GiB `/var/lib/swapfile`, or `/var/lib/swapfile-64k` on the 64 KiB kernel |
 | rdma-core's udev rules | `ib_uverbs`, `rdma_ucm` and `ib_umad` load at boot, and RDMA devices get DGX OS's names, such as `rocep1s0f0` |
 | `dgx-spark-mlnx-hotplug` | ConnectX-7 hot-plug |
