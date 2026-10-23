@@ -149,8 +149,8 @@ in
         kindling-spark-os runs Ubuntu's 64K build on GB10 boxes, but this
         NixOS build of it is untested there. 64K pages also disable 32-bit
         compatibility (no AArch32 binaries); the kernel refuses a swap area
-        made under 4K pages, such as DGX OS's /swap.img, so give 64K its own
-        swap file rather than re-making one DGX OS still uses; and prebuilt
+        made under 4K pages, such as DGX OS's /swap.img, so the module gives
+        64K a swap file of its own; and prebuilt
         binaries that assume 4K pages, such as a bundled jemalloc built for
         4K or x86 emulators like FEX/box64, may fail. On kindling-spark-os's
         64K boxes a CUDA copy from a file-backed mmap hangs, so vLLM needs
@@ -403,6 +403,16 @@ in
     systemd.targets.suspend.enable = false;
     systemd.targets.hybrid-sleep.enable = false;
     systemd.targets.suspend-then-hibernate.enable = false;
+
+    # DGX OS runs with a 16 GiB swap file, and the Sparks checked had up to 5.6 GiB in it under
+    # load. kindling-spark-os found that a model DGX OS loads by swapping is OOM-killed without
+    # swap. The kernel refuses a swap area made under other pages, so 64K gets a file of its own.
+    swapDevices = lib.mkDefault [
+      {
+        device = if cfg.use64kKernel then "/var/lib/swapfile-64k" else "/var/lib/swapfile";
+        size = 16 * 1024;
+      }
+    ];
 
     # RoCE as DGX OS sets it up with rdma-core's udev rules: the verbs, RDMA CM and MAD device
     # modules (ibstat needs ib_umad), and RDMA devices named after their PCI path (rocep1s0f0,

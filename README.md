@@ -231,6 +231,7 @@ three Sparks on DGX OS 7.5 and 7.6:
 | `nvidia-spark-limits`, `nv-limits` | unlimited memlock, and 500000 open files, for logins |
 | `nvidia-no-systemd-suspend` | the suspend targets are masked |
 | `nvidia-nvme-options` | NVMe interrupt coalescing at boot |
+| a 16 GiB `/swap.img` | a 16 GiB `/var/lib/swapfile`, or `/var/lib/swapfile-64k` on the 64 KiB kernel |
 | rdma-core's udev rules | `ib_uverbs`, `rdma_ucm` and `ib_umad` load at boot, and RDMA devices get DGX OS's names, such as `rocep1s0f0` |
 | `dgx-spark-mlnx-hotplug` | ConnectX-7 hot-plug |
 | `nvidia-mstflint-loader` | `mstflint` and `nvme-cli`, without the mstflint kernel module |
@@ -258,8 +259,8 @@ shows how to put the driver back in NUMA mode, which is faster but still slow at
 `hardware.dgx-spark.use64kKernel = true` builds NVIDIA's 64 KiB page kernel. The services module
 then turns transparent huge pages off, as kindling-spark-os's 64k image does: with THP on,
 `vm.min_free_kbytes` rose to about 5% of RAM. The kernel refuses a swap area made under 4 KiB
-pages, so give it a swap file of its own. On 64k, a CUDA copy from a file-backed mmap hangs, so
-vLLM needs `--safetensors-load-strategy eager`. See also NVIDIA's
+pages, so the hardware module gives it a swap file of its own. On 64k, a CUDA copy from a
+file-backed mmap hangs, so vLLM needs `--safetensors-load-strategy eager`. See also NVIDIA's
 [open-gpu-kernel-modules#1269](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/1269)
 on GPU faults with large allocations on 64 KiB pages.
 
