@@ -40,9 +40,21 @@ See NOTICE for which files come from where, and under which licence.
   NixOS containers, evaluates for the 4 KiB and the 64 KiB kernel
   (`checks.<system>.hardware-eval`). The checks build neither the kernel nor CUDA vLLM.
 - mentatd, the agent, py-spy and dispram build for aarch64.
+- Three GB10 hosts booted native NixOS with the services module and the retained Canonical
+  `6.17.0-1029-nvidia` kernel and `580.173.02` driver. CUDA computations and each host agent's
+  GPU MCP tool passed. These boots did not use the hardware module's default kernel/driver pair.
+- All three direct ConnectX-7 links negotiated 200 Gb/s full duplex, with Ethernet MTU 9000
+  and active RDMA MTU 4096. Each direction was measured separately: 107.6–110.5 Gb/s TCP and
+  108.6–109.0 Gb/s host-memory RDMA (`ucx_perftest`, `rc_mlx5`, zero-copy, 64 KiB messages).
+  All six ports had zero Linux interface error/drop counter increases during those measurements.
+  Their PCIe links report 5.0 x4, so Ethernet link rate is not a promise of 200 Gb/s host payload.
+- A three-rank `deepseek-v4.1-flash` served from Docker with NVIDIA CDI on those native NixOS
+  hosts. Node identity, model rendezvous and socket selectors use the fabric. Its health and
+  model-catalog endpoints passed, and a real chat completion returned `4` for `2 + 2`.
 
-Nothing here has run on a GB10 yet. No model has used the GPU or RDMA from a NixOS container,
-dispram has not been validated on the NixOS driver, and no firmware has been flashed from NixOS.
+GPU/RDMA use in `services.kindling.models`' systemd-nspawn containers remains untested.
+dispram remains unvalidated on the NixOS driver, and these box checks performed no firmware
+updates. Host-specific configurations and raw hardware receipts stay outside this repository.
 
 ## Using it
 
@@ -128,6 +140,16 @@ VM's QEMU user network (10.0.2.15), then looks to the router like a way to reach
 lead it back to itself: in the VM test, the router ran spark2's agent tools on spark1. Name the
 cluster's interfaces in `node.env` instead, as the VM test does with
 `MENTAT_ANNOUNCE_IFACES=eno1,enp1s0f0np0`.
+
+For control over a direct-cable fabric, set `MENTAT_NODE_IP` to a fabric address and announce
+only the fabric interfaces. A triangle with a different subnet on each edge needs persistent
+host routes between the chosen control addresses, including the return paths. Check traffic
+from each chosen source address, not just a ping from the interface's default address.
+
+Stop a distributed model before restarting mentatd to change its identity. Move every socket
+selector used by the recipe: `NCCL_SOCKET_IFNAME`, `GLOO_SOCKET_IFNAME`, `TP_SOCKET_IFNAME`
+and `MN_IF_NAME`, as well as `VLLM_HOST_IP` and the model's master address. `NCCL_IB_HCA`
+names RDMA devices, not socket interfaces.
 
 `services.kindling.connectxMtu` and `ethernetMtu` give each `en*` port its MTU when the port
 appears, at boot or later, as a ConnectX port does when its cable goes in. On NetworkManager

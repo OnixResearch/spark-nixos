@@ -231,8 +231,10 @@ the cabinets from `fwupd.org/downloads` by their SHA-256.
 
 ## Boxes
 
-- Nothing from this repository has run on a GB10 yet. The first run needs a box the owner has
-  set aside and their go-ahead.
+- Three GB10 hosts have booted native NixOS and passed CUDA and host-service checks with the
+  retained Canonical `6.17.0-1029-nvidia` kernel and `580.173.02` driver. This does not validate
+  the hardware module's default kernel/driver pair or GPU/RDMA use inside NixOS containers.
+  Any box still needs the owner's go-ahead and must be set aside for the task.
 - Ask before rebooting a box unless the owner has handed it over for the task. A reboot stops
   every model on it, and a model spread over several boxes stops on all of them.
 - Restarting mentatd on the box that heads a model group kills that group. Never restart it
