@@ -81,7 +81,8 @@ loader settings, users and `system.stateVersion`, and add spark-nixos to the hos
 cache.nixos.org does not hold this NVIDIA kernel, so unless another cache has the same
 derivation, the first build compiles it on the box. The hardware module leaves nixpkgs'
 `cudaSupport` off, unlike graham33's: Kindling's models run in containers that bring their own
-CUDA, and the host's other packages come from cache.nixos.org.
+CUDA, and the host's other packages come from cache.nixos.org. It also leaves out nvidia-settings,
+a GUI for an X server. A desktop host sets `hardware.nvidia.nvidiaSettings = true`.
 
 To keep graham33's or straylight-software's hardware module, import
 `spark-nixos.nixosModules.kindling` with it instead of `nixosModules.default`. Never import two

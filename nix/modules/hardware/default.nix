@@ -297,7 +297,9 @@ in
       modesetting.enable = false;
       open = true;
       nvidiaPersistenced = true;
-      nvidiaSettings = true;
+      # nvidia-settings is a GUI for an X server, which a cluster node does not run. It would
+      # bring GTK and X11, 85 store paths, and a build on the box. A desktop host sets it back.
+      nvidiaSettings = lib.mkDefault false;
       # Apply scrubKernelDevRefs to the .open / .mod kernel module variants —
       # bypass boot.kernelPackages.apply (which chains another `.extend` and
       # re-evaluates `nvidiaPackages` through the makeExtensible fixed point,
