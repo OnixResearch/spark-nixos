@@ -108,6 +108,9 @@ A kernel bump: change `kernel-configs/nvidia-kernel-source.nix`, then from the c
 run `nix run .#generate-kernel-config` and `nix run .#generate-kernel-config -- --flavour
 nvidia-64k`. `checks.<system>.hardware-eval` evaluates both kernels. No check builds the kernel:
 that needs an aarch64 machine and takes a while, so build it there before any box boots it.
+Building the initrd fails on a module the config leaves out. `modinfo -F filename <module>` on a
+DGX OS box with the same kernel checks the host's module lists without a build. For 7.0.0-1019,
+every module in `boot.initrd.availableKernelModules` and `boot.kernelModules` was there.
 
 ## Testing a change
 
